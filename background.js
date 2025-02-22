@@ -1,10 +1,374 @@
 console.log('Background script loaded and running');
 
+// Global conversation state
+let currentConversationId = null;
+
+function generateConversationId() {
+  return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+}
+
+function setCurrentConversationId(id) {
+  currentConversationId = id;
+  // Broadcast to all tabs
+  chrome.tabs.query({}, (tabs) => {
+    tabs.forEach(tab => {
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'UPDATE_CONVERSATION_ID',
+        conversationId: id
+      }).catch(() => {
+        // Ignore errors for inactive tabs
+      });
+    });
+  });
+}
+
+// Initialize conversation ID when extension starts
+chrome.runtime.onStartup.addListener(() => {
+  setCurrentConversationId(generateConversationId());
+});
+
+// Also initialize on install/update
+chrome.runtime.onInstalled.addListener(() => {
+  setCurrentConversationId(generateConversationId());
+});
+
+// Function to start a new conversation
+function startNewConversation() {
+  setCurrentConversationId(generateConversationId());
+}
+
+// Initialize conversation ID immediately
+setCurrentConversationId(generateConversationId());
+
+// Initialize context menu
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.create({
+    id: 'options',
+    title: 'Options',
+    contexts: ['action']
+  });
+  
+  chrome.contextMenus.create({
+    id: 'history',
+    title: 'View History',
+    contexts: ['action']
+  });
+});
+
+// Add stream content management
+let currentStreamContent = '';
+
+// Handle extension icon click
+chrome.action.onClicked.addListener(async (tab) => {
+  console.log('Extension icon clicked for tab:', tab.id);
+  
+  // Execute script to toggle panel
+  await chrome.scripting.executeScript({
+    target: { tabId: tab.id },
+    function: (currentContent, conversationId) => {
+      console.log('Panel script executing');
+      let panel = document.querySelector('.ai-assistant-panel');
+      
+      if (!panel) {
+        console.log('Creating new panel');
+        // Create panel if it doesn't exist
+        panel = document.createElement('div');
+        panel.className = 'ai-assistant-panel';
+        // Set conversation ID from parameter
+        panel.dataset.conversationId = conversationId;
+        // Set initial display state explicitly
+        panel.style.display = 'flex';
+        panel.style.cssText = `
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          width: 350px;
+          max-height: 500px;
+          background-color: white;
+          border-radius: 8px;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+          z-index: 10000;
+          font-family: Arial, sans-serif;
+          border: 1px solid #e1e4e8;
+          display: flex;
+          flex-direction: column;
+          overflow: hidden;
+        `;
+
+        // Add header with gradient background
+        const header = document.createElement('div');
+        header.style.cssText = `
+          padding: 12px 16px;
+          background: linear-gradient(to right, #4CAF50, #45a049);
+          border-bottom: 1px solid #e1e4e8;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          color: white;
+        `;
+
+        const headerTop = document.createElement('div');
+        headerTop.style.cssText = `
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        `;
+
+        const title = document.createElement('span');
+        title.textContent = 'AI Assistant';
+        title.style.fontWeight = 'bold';
+
+        const buttonContainer = document.createElement('div');
+        buttonContainer.style.cssText = `
+          display: flex;
+          gap: 8px;
+        `;
+
+        const newConvBtn = document.createElement('button');
+        newConvBtn.innerHTML = '⟳';
+        newConvBtn.title = 'Start New Conversation';
+        newConvBtn.style.cssText = `
+          border: none;
+          background: none;
+          color: white;
+          font-size: 20px;
+          cursor: pointer;
+          padding: 0 4px;
+          line-height: 24px;
+          opacity: 0.8;
+          transition: opacity 0.2s;
+        `;
+        newConvBtn.onmouseover = () => newConvBtn.style.opacity = '1';
+        newConvBtn.onmouseout = () => newConvBtn.style.opacity = '0.8';
+        newConvBtn.onclick = () => {
+          console.log('Starting new conversation');
+          chrome.runtime.sendMessage({ action: 'START_NEW_CONVERSATION' });
+        };
+
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = `
+          border: none;
+          background: none;
+          color: white;
+          font-size: 24px;
+          cursor: pointer;
+          padding: 0 4px;
+          line-height: 24px;
+          opacity: 0.8;
+          transition: opacity 0.2s;
+        `;
+        closeBtn.onmouseover = () => closeBtn.style.opacity = '1';
+        closeBtn.onmouseout = () => closeBtn.style.opacity = '0.8';
+        closeBtn.onclick = () => {
+          console.log('Panel close button clicked');
+          panel.style.display = 'none';
+        };
+
+        buttonContainer.appendChild(newConvBtn);
+        buttonContainer.appendChild(closeBtn);
+        headerTop.appendChild(title);
+        headerTop.appendChild(buttonContainer);
+
+        const conversationIdDisplay = document.createElement('div');
+        conversationIdDisplay.style.cssText = `
+          font-size: 10px;
+          opacity: 0.8;
+          font-family: monospace;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        `;
+        conversationIdDisplay.title = panel.dataset.conversationId;
+        conversationIdDisplay.textContent = panel.dataset.conversationId;
+
+        header.appendChild(headerTop);
+        header.appendChild(conversationIdDisplay);
+
+        // Add content area
+        const content = document.createElement('div');
+        content.className = 'panel-content';
+        content.style.cssText = `
+          padding: 16px;
+          flex-grow: 1;
+          overflow-y: auto;
+          background-color: white;
+          color: #333;
+          font-size: 14px;
+          line-height: 1.5;
+        `;
+
+        // If there's current content, display it
+        if (currentContent) {
+          content.innerHTML = '';
+          const pre = document.createElement('pre');
+          pre.style.cssText = `
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
+            line-height: inherit;
+          `;
+          pre.innerHTML = currentContent;
+          content.appendChild(pre);
+        } else {
+          content.innerHTML = '<p>Type a message below to chat about this page.</p>';
+        }
+
+        // Add loading indicator
+        const loadingIndicator = document.createElement('div');
+        loadingIndicator.className = 'loading-indicator';
+        loadingIndicator.style.cssText = `
+          padding: 8px 16px;
+          background-color: #f8f9fa;
+          border-top: 1px solid #e1e4e8;
+          color: #666;
+          font-size: 12px;
+          display: none;
+        `;
+        loadingIndicator.textContent = 'Processing...';
+
+        // Add chat input area
+        const chatArea = document.createElement('div');
+        chatArea.className = 'chat-input-area';
+        chatArea.style.cssText = `
+          padding: 12px;
+          background-color: #f8f9fa;
+          border-top: 1px solid #e1e4e8;
+          display: flex;
+          gap: 8px;
+        `;
+
+        const chatInput = document.createElement('textarea');
+        chatInput.className = 'chat-input';
+        chatInput.placeholder = 'Type your message...';
+        chatInput.style.cssText = `
+          flex-grow: 1;
+          padding: 8px;
+          border: 1px solid #e1e4e8;
+          border-radius: 4px;
+          resize: none;
+          min-height: 20px;
+          max-height: 120px;
+          font-family: inherit;
+          font-size: 14px;
+          line-height: 1.4;
+          background-color: white;
+          color: #333;
+        `;
+
+        const sendButton = document.createElement('button');
+        sendButton.className = 'chat-send-button';
+        sendButton.textContent = 'Send';
+        sendButton.style.cssText = `
+          padding: 8px 16px;
+          background: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 14px;
+          transition: background-color 0.2s;
+        `;
+        sendButton.onmouseover = () => sendButton.style.backgroundColor = '#45a049';
+        sendButton.onmouseout = () => sendButton.style.backgroundColor = '#4CAF50';
+
+        // Handle chat input submission
+        const handleSubmit = () => {
+          const message = chatInput.value.trim();
+          if (message) {
+            console.log('Dispatching chat message event');
+            document.dispatchEvent(new CustomEvent('ai_assistant_chat', {
+              detail: {
+                message,
+                url: window.location.href,
+                conversationId: panel.dataset.conversationId
+              }
+            }));
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+          }
+        };
+
+        // Handle Enter key (with and without Shift)
+        chatInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            handleSubmit();
+          }
+        });
+
+        // Auto-resize textarea
+        chatInput.addEventListener('input', () => {
+          chatInput.style.height = 'auto';
+          chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+        });
+
+        sendButton.onclick = handleSubmit;
+
+        chatArea.appendChild(chatInput);
+        chatArea.appendChild(sendButton);
+
+        panel.appendChild(header);
+        panel.appendChild(content);
+        panel.appendChild(loadingIndicator);
+        panel.appendChild(chatArea);
+        document.body.appendChild(panel);
+        console.log('New panel created and added to page');
+
+        // If there's an active stream, add this tab to receive updates
+        chrome.runtime.sendMessage({ action: 'JOIN_STREAM' });
+
+        return true; // Panel was created and shown
+      } else {
+        console.log('Toggling existing panel');
+        const isVisible = panel.style.display !== 'none';
+        panel.style.display = isVisible ? 'none' : 'flex';
+        
+        // If showing panel and there's current content, update it
+        if (!isVisible && currentContent) {
+          const content = panel.querySelector('.panel-content');
+          if (content) {
+            content.innerHTML = '';
+            const pre = document.createElement('pre');
+            pre.style.cssText = `
+              margin: 0;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+              font-family: inherit;
+              line-height: inherit;
+            `;
+            pre.innerHTML = currentContent;
+            content.appendChild(pre);
+          }
+        }
+        
+        console.log('Panel visibility set to:', !isVisible);
+        return !isVisible;
+      }
+    },
+    args: [currentStreamContent, currentConversationId] // Pass both currentContent and conversationId
+  });
+});
+
+// Handle context menu clicks
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  if (info.menuItemId === 'options') {
+    chrome.runtime.openOptionsPage();
+  } else if (info.menuItemId === 'history') {
+    chrome.tabs.create({ url: 'history.html' });
+  }
+});
+
 // Default values
 const DEFAULT_MODEL = 'gpt-3.5-turbo';
 const DEFAULT_USER_ID = 'default_user';
 const DEFAULT_PERSONA_ID = 'default_persona';
 const DEFAULT_SYSTEM_MESSAGE = 'You are a helpful assistant that analyzes webpage content.';
+
+// Add stream management at the top level
+let activeStream = null;
+let activeStreamTabs = new Set();
 
 // Helper function to get settings from storage
 async function getSettings() {
@@ -51,11 +415,12 @@ async function getSettings() {
   };
 }
 
-// Function to process streaming response
-async function processStream(reader, tabId) {
+// Update processStream to maintain current content
+async function processStream(reader) {
   let isFirst = true;
   const decoder = new TextDecoder();
-  console.log('Starting to process stream for tab:', tabId);
+  console.log('Starting to process stream for tabs:', Array.from(activeStreamTabs));
+  currentStreamContent = ''; // Reset content at start of new stream
   
   try {
     while (true) {
@@ -79,12 +444,20 @@ async function processStream(reader, tabId) {
           const content = data.choices?.[0]?.delta?.content || data.choices?.[0]?.message?.content;
           if (!content) continue;
           
-          console.log('Sending content chunk to tab:', tabId);
-          chrome.tabs.sendMessage(tabId, {
-            action: 'STREAM_CONTENT',
-            content,
-            isFirst
-          });
+          currentStreamContent += content; // Accumulate content
+          
+          // Broadcast to all active tabs
+          for (const tabId of activeStreamTabs) {
+            console.log('Sending content chunk to tab:', tabId);
+            chrome.tabs.sendMessage(tabId, {
+              action: 'STREAM_CONTENT',
+              content,
+              isFirst
+            }).catch(error => {
+              console.error(`Error sending to tab ${tabId}:`, error);
+              activeStreamTabs.delete(tabId);
+            });
+          }
           isFirst = false;
         } catch (e) {
           console.error('Error parsing streaming data:', e);
@@ -93,13 +466,22 @@ async function processStream(reader, tabId) {
     }
   } catch (error) {
     console.error('Error processing stream:', error);
-    chrome.tabs.sendMessage(tabId, {
-      action: 'SHOW_ERROR',
-      error: 'Error processing response stream'
-    });
+    // Notify all tabs of error
+    for (const tabId of activeStreamTabs) {
+      chrome.tabs.sendMessage(tabId, {
+        action: 'SHOW_ERROR',
+        error: 'Error processing response stream'
+      });
+    }
   } finally {
     console.log('Stream processing complete, hiding loading indicator');
-    chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
+    // Hide loading for all tabs
+    for (const tabId of activeStreamTabs) {
+      chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
+    }
+    // Clear stream state but keep content
+    activeStream = null;
+    activeStreamTabs.clear();
   }
 }
 
@@ -170,8 +552,14 @@ async function callAIEndpoint(pageData, tabId) {
     console.log('API request successful');
     if (settings.stream) {
       console.log('Processing streaming response');
-      const reader = response.body.getReader();
-      await processStream(reader, tabId);
+      // Add this tab to active stream tabs
+      activeStreamTabs.add(tabId);
+      
+      if (!activeStream) {
+        // Start new stream if none exists
+        activeStream = response.body.getReader();
+        processStream(activeStream);
+      }
     } else {
       console.log('Processing non-streaming response');
       const data = await response.json();
@@ -194,13 +582,60 @@ async function callAIEndpoint(pageData, tabId) {
   }
 }
 
+// Function to store a message in history
+async function storeMessage(message, response, url, title, conversationId) {
+  const timestamp = Date.now();
+  const historyEntry = {
+    timestamp,
+    url,
+    title,
+    message,
+    response,
+    conversationId
+  };
+  
+  // Get existing history
+  const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
+  
+  // Add new entry
+  const updatedHistory = [...messageHistory, historyEntry];
+  
+  // Keep only the last 100 messages to prevent storage issues
+  const trimmedHistory = updatedHistory.slice(-100);
+  
+  // Store updated history
+  await chrome.storage.local.set({ 
+    messageHistory: trimmedHistory,
+    lastMessage: historyEntry // Store last message separately for quick access
+  }).catch(error => {
+    console.error('Error storing message history:', error);
+  });
+  
+  console.log('Stored message in history. Total messages:', trimmedHistory.length);
+  return historyEntry;
+}
+
+// Function to get conversation messages
+async function getConversationMessages(conversationId) {
+  const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
+  return messageHistory
+    .filter(msg => msg.conversationId === conversationId)
+    .map(msg => ({
+      role: msg.response ? 'assistant' : 'user',
+      content: msg.response || msg.message,
+      timestamp: msg.timestamp
+    }))
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
 // Function to handle chat messages
-async function handleChatMessage(message, url, pageContent, title, tabId) {
+async function handleChatMessage(message, url, pageContent, title, tabId, conversationId) {
   console.log('Handling chat message:', { 
     messageLength: message.length, 
     url,
     title,
-    pageContentLength: pageContent?.length 
+    pageContentLength: pageContent?.length,
+    conversationId
   });
   
   try {
@@ -215,11 +650,18 @@ async function handleChatMessage(message, url, pageContent, title, tabId) {
     console.log('Showing loading indicator');
     chrome.tabs.sendMessage(tabId, { action: 'SHOW_LOADING' });
 
-    const messages = [{
-      role: 'user',
-      content: message,
-      timestamp: Date.now()
-    }];
+    // Get previous messages in this conversation
+    const conversationMessages = await getConversationMessages(conversationId);
+    
+    // Add current message
+    const messages = [
+      ...conversationMessages,
+      {
+        role: 'user',
+        content: message,
+        timestamp: Date.now()
+      }
+    ];
 
     const requestBody = {
       messages,
@@ -229,7 +671,8 @@ async function handleChatMessage(message, url, pageContent, title, tabId) {
         url: url,
         title: title,
         workspace_content: pageContent,
-        thought_content: null
+        thought_content: null,
+        conversation_id: conversationId
       },
       model: settings.model,
       temperature: settings.temperature,
@@ -262,21 +705,109 @@ async function handleChatMessage(message, url, pageContent, title, tabId) {
     }
 
     console.log('Chat API request successful');
+    let fullResponse = '';
+    
     if (settings.stream) {
       console.log('Processing streaming response');
-      const reader = response.body.getReader();
-      await processStream(reader, tabId);
+      // Add this tab to active stream tabs
+      activeStreamTabs.add(tabId);
+      
+      // Always create a new stream for chat messages
+      if (activeStream) {
+        try {
+          await activeStream.cancel();
+        } catch (e) {
+          console.warn('Error canceling previous stream:', e);
+        }
+      }
+      
+      activeStream = response.body.getReader();
+      
+      // Create a promise to collect the full response
+      const collectResponse = new Promise((resolve, reject) => {
+        let collected = '';
+        
+        processStream(activeStream)
+          .then(() => resolve(collected))
+          .catch(reject);
+          
+        // Override processStream temporarily to collect the response
+        const originalProcessStream = processStream;
+        processStream = async (reader) => {
+          currentStreamContent = ''; // Reset content
+          const decoder = new TextDecoder();
+          let isFirst = true;
+          
+          try {
+            while (true) {
+              const { value, done } = await reader.read();
+              if (done) break;
+              
+              const chunk = decoder.decode(value);
+              const lines = chunk.split('\n');
+              
+              for (const line of lines) {
+                if (!line.trim() || line.includes('[DONE]')) continue;
+                
+                try {
+                  const jsonStr = line.replace(/^data: /, '');
+                  const data = JSON.parse(jsonStr);
+                  
+                  const content = data.choices?.[0]?.delta?.content || data.choices?.[0]?.message?.content;
+                  if (!content) continue;
+                  
+                  collected += content;
+                  currentStreamContent += content;
+                  
+                  // Broadcast to all active tabs
+                  for (const tabId of activeStreamTabs) {
+                    chrome.tabs.sendMessage(tabId, {
+                      action: 'STREAM_CONTENT',
+                      content,
+                      isFirst
+                    }).catch(error => {
+                      console.error(`Error sending to tab ${tabId}:`, error);
+                      activeStreamTabs.delete(tabId);
+                    });
+                  }
+                  isFirst = false;
+                } catch (e) {
+                  console.error('Error parsing streaming data:', e);
+                }
+              }
+            }
+          } catch (error) {
+            reject(error);
+          } finally {
+            processStream = originalProcessStream;
+            activeStream = null;
+            activeStreamTabs.clear();
+            
+            // Hide loading indicator for all tabs
+            for (const tabId of activeStreamTabs) {
+              chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
+            }
+          }
+        };
+      });
+      
+      // Wait for the full response
+      fullResponse = await collectResponse;
     } else {
       console.log('Processing non-streaming response');
       const data = await response.json();
+      fullResponse = data.choices[0].message.content;
+      
       chrome.tabs.sendMessage(tabId, {
         action: 'STREAM_CONTENT',
-        content: data.choices[0].message.content,
+        content: fullResponse,
         isFirst: true
       });
       chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
     }
 
+    // Store the message and response
+    await storeMessage(message, fullResponse, url, title, conversationId);
     return { success: true };
   } catch (error) {
     console.error('Error in chat handler:', error);
@@ -288,10 +819,32 @@ async function handleChatMessage(message, url, pageContent, title, tabId) {
   }
 }
 
-// Listen for messages from content script or popup
+// Update message listener to handle JOIN_STREAM action
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background script received message:', request);
   
+  if (request.action === 'JOIN_STREAM') {
+    const tabId = sender.tab?.id;
+    if (tabId && activeStream) {
+      activeStreamTabs.add(tabId);
+      // Send current content immediately
+      if (currentStreamContent) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'STREAM_CONTENT',
+          content: currentStreamContent,
+          isFirst: true
+        });
+      }
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+  else if (request.action === 'START_NEW_CONVERSATION') {
+    console.log('Starting new conversation');
+    startNewConversation();
+    sendResponse({ success: true });
+    return true;
+  }
   if (request.action === 'ANALYZE_PAGE') {
     console.log('Starting page analysis');
     // Use the explicitly passed tabId from the popup, or fall back to sender.tab.id for content script messages
@@ -327,7 +880,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.data.url,
       request.data.pageContent,
       request.data.title,
-      tabId
+      tabId,
+      request.data.conversationId
     )
       .then(response => {
         console.log('Chat handling complete:', response);

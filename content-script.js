@@ -36,10 +36,11 @@ document.addEventListener('ai_assistant_chat', (event) => {
       message: event.detail.message,
       url: pageInfo.url,
       pageContent: pageInfo.text,
-      title: pageInfo.title
+      title: pageInfo.title,
+      conversationId: event.detail.conversationId
     }
   }, (response) => {
-    console.log('Got response from chat message:', response);
+    //console.log('Got response from chat message:', response);
     if (chrome.runtime.lastError) {
       console.error('Error sending chat message:', chrome.runtime.lastError);
     }
@@ -48,12 +49,13 @@ document.addEventListener('ai_assistant_chat', (event) => {
 
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('Content script received message:', {
-    action: request.action,
-    hasContent: !!request.content,
-    isFirst: request.isFirst,
-    sender: sender.id
-  });
+  // console.log('Content script received message:', {
+  //   action: request.action,
+  //   hasContent: !!request.content,
+  //   isFirst: request.isFirst,
+  //   sender: sender.id
+  // });
+  console.log('Content script received message');
 
   if (request.action === 'CAPTURE_PAGE') {
     console.log('Capturing page content');
@@ -61,6 +63,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     console.log('Sending response back to popup');
     sendResponse({ success: true, data: pageData });
   } 
+  else if (request.action === 'UPDATE_CONVERSATION_ID') {
+    console.log('Updating conversation ID');
+    const panel = document.querySelector('.ai-assistant-panel');
+    if (panel) {
+      panel.dataset.conversationId = request.conversationId;
+      const conversationIdDisplay = panel.querySelector('div[title]');
+      if (conversationIdDisplay) {
+        conversationIdDisplay.title = request.conversationId;
+        conversationIdDisplay.textContent = request.conversationId;
+      }
+    }
+  }
   else if (request.action === 'SHOW_LOADING') {
     console.log('Showing loading state');
     const panel = document.querySelector('.ai-assistant-panel');
@@ -73,11 +87,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.warn('Loading indicator element not found');
       }
       const content = panel.querySelector('.panel-content');
-      if (content) {
-        content.innerHTML = '<p>Analyzing page...</p>';
+      if (content && request.isFirst) {
+        content.innerHTML = '<p>Processing...</p>';
         console.log('Content area updated with loading message');
-      } else {
-        console.warn('Content element not found');
       }
     } else {
       console.warn('Panel not found when trying to show loading state');
@@ -99,10 +111,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   else if (request.action === 'STREAM_CONTENT') {
-    console.log('Processing stream content', {
-      isFirst: request.isFirst,
-      contentLength: request.content.length
-    });
+    // console.log('Processing stream content', {
+    //   isFirst: request.isFirst,
+    //   contentLength: request.content.length
+    // });
     const panel = document.querySelector('.ai-assistant-panel');
     if (panel) {
       const content = panel.querySelector('.panel-content');
@@ -128,7 +140,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           pre.innerHTML += formattedContent;
           // Scroll to bottom to show new content
           content.scrollTop = content.scrollHeight;
-          console.log('Content chunk added and scrolled to bottom');
+          // console.log('Content chunk added and scrolled to bottom');
         } else {
           console.warn('Pre element not found for content append');
         }
