@@ -194,9 +194,104 @@ async function callAIEndpoint(pageData, tabId) {
   }
 }
 
+// Function to handle chat messages
+async function handleChatMessage(message, url, pageContent, title, tabId) {
+  console.log('Handling chat message:', { 
+    messageLength: message.length, 
+    url,
+    title,
+    pageContentLength: pageContent?.length 
+  });
+  
+  try {
+    const settings = await getSettings();
+    if (!settings.apiKey) {
+      throw new Error('API key not found. Please set it in the options page.');
+    }
+    if (!settings.apiEndpoint) {
+      throw new Error('API endpoint not configured. Please set it in the options page.');
+    }
+
+    console.log('Showing loading indicator');
+    chrome.tabs.sendMessage(tabId, { action: 'SHOW_LOADING' });
+
+    const messages = [{
+      role: 'user',
+      content: message,
+      timestamp: Date.now()
+    }];
+
+    const requestBody = {
+      messages,
+      metadata: {
+        user_id: settings.userId,
+        persona_id: settings.personaId,
+        url: url,
+        title: title,
+        workspace_content: pageContent,
+        thought_content: null
+      },
+      model: settings.model,
+      temperature: settings.temperature,
+      stream: settings.stream,
+      system_message: settings.systemMessage
+    };
+
+    // Add optional parameters
+    if (settings.maxTokens) requestBody.max_tokens = settings.maxTokens;
+    if (settings.topP) requestBody.top_p = settings.topP;
+    if (settings.topK) requestBody.top_k = settings.topK;
+    if (settings.presencePenalty) requestBody.presence_penalty = settings.presencePenalty;
+    if (settings.frequencyPenalty) requestBody.frequency_penalty = settings.frequencyPenalty;
+    if (settings.repetitionPenalty) requestBody.repetition_penalty = settings.repetitionPenalty;
+    if (settings.minP) requestBody.min_p = settings.minP;
+
+    console.log('Making chat API request to:', settings.apiEndpoint);
+    const response = await fetch(settings.apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${settings.apiKey}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      console.error('Chat API request failed:', response.status, response.statusText);
+      throw new Error(`API request failed: ${response.statusText}`);
+    }
+
+    console.log('Chat API request successful');
+    if (settings.stream) {
+      console.log('Processing streaming response');
+      const reader = response.body.getReader();
+      await processStream(reader, tabId);
+    } else {
+      console.log('Processing non-streaming response');
+      const data = await response.json();
+      chrome.tabs.sendMessage(tabId, {
+        action: 'STREAM_CONTENT',
+        content: data.choices[0].message.content,
+        isFirst: true
+      });
+      chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error in chat handler:', error);
+    chrome.tabs.sendMessage(tabId, {
+      action: 'SHOW_ERROR',
+      error: error.message
+    });
+    return { success: false, error: error.message };
+  }
+}
+
 // Listen for messages from content script or popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background script received message:', request);
+  
   if (request.action === 'ANALYZE_PAGE') {
     console.log('Starting page analysis');
     // Use the explicitly passed tabId from the popup, or fall back to sender.tab.id for content script messages
@@ -214,6 +309,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       })
       .catch(error => {
         console.error('Error in message handler:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true;
+  }
+  else if (request.action === 'CHAT_MESSAGE') {
+    console.log('Handling chat message');
+    const tabId = sender.tab?.id;
+    if (!tabId) {
+      console.error('No tab ID available for chat');
+      sendResponse({ success: false, error: 'No tab ID available' });
+      return true;
+    }
+
+    handleChatMessage(
+      request.data.message,
+      request.data.url,
+      request.data.pageContent,
+      request.data.title,
+      tabId
+    )
+      .then(response => {
+        console.log('Chat handling complete:', response);
+        sendResponse(response);
+      })
+      .catch(error => {
+        console.error('Error in chat handler:', error);
         sendResponse({ success: false, error: error.message });
       });
     return true;

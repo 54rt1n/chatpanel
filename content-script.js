@@ -25,6 +25,27 @@ function formatContent(text) {
     .replace(/\n/g, '<br>');
 }
 
+// Listen for chat messages from the panel
+document.addEventListener('ai_assistant_chat', (event) => {
+  console.log('Content script received chat event:', event.detail);
+  // Gather current page info for context
+  const pageInfo = gatherPageInfo();
+  chrome.runtime.sendMessage({
+    action: 'CHAT_MESSAGE',
+    data: {
+      message: event.detail.message,
+      url: pageInfo.url,
+      pageContent: pageInfo.text,
+      title: pageInfo.title
+    }
+  }, (response) => {
+    console.log('Got response from chat message:', response);
+    if (chrome.runtime.lastError) {
+      console.error('Error sending chat message:', chrome.runtime.lastError);
+    }
+  });
+});
+
 // Handle messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Content script received message:', {

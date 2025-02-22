@@ -129,9 +129,90 @@ document.addEventListener('DOMContentLoaded', () => {
           `;
           loadingIndicator.textContent = 'Processing...';
 
+          // Add chat input area
+          const chatArea = document.createElement('div');
+          chatArea.className = 'chat-input-area';
+          chatArea.style.cssText = `
+            padding: 12px;
+            background-color: #f8f9fa;
+            border-top: 1px solid #e1e4e8;
+            display: flex;
+            gap: 8px;
+          `;
+
+          const chatInput = document.createElement('textarea');
+          chatInput.className = 'chat-input';
+          chatInput.placeholder = 'Type your message...';
+          chatInput.style.cssText = `
+            flex-grow: 1;
+            padding: 8px;
+            border: 1px solid #e1e4e8;
+            border-radius: 4px;
+            resize: none;
+            min-height: 20px;
+            max-height: 120px;
+            font-family: inherit;
+            font-size: 14px;
+            line-height: 1.4;
+          `;
+
+          const sendButton = document.createElement('button');
+          sendButton.className = 'chat-send-button';
+          sendButton.textContent = 'Send';
+          sendButton.style.cssText = `
+            padding: 8px 16px;
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.2s;
+          `;
+          sendButton.onmouseover = () => sendButton.style.backgroundColor = '#45a049';
+          sendButton.onmouseout = () => sendButton.style.backgroundColor = '#4CAF50';
+
+          // Handle chat input submission
+          const handleSubmit = () => {
+            const message = chatInput.value.trim();
+            if (message) {
+              console.log('Dispatching chat message event');
+              // Dispatch custom event instead of sending message directly
+              document.dispatchEvent(new CustomEvent('ai_assistant_chat', {
+                detail: {
+                  message,
+                  url: window.location.href
+                }
+              }));
+              chatInput.value = '';
+              // Reset height
+              chatInput.style.height = 'auto';
+            }
+          };
+
+          // Handle Enter key (with and without Shift)
+          chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+              e.preventDefault();
+              handleSubmit();
+            }
+          });
+
+          // Auto-resize textarea
+          chatInput.addEventListener('input', () => {
+            chatInput.style.height = 'auto';
+            chatInput.style.height = Math.min(chatInput.scrollHeight, 120) + 'px';
+          });
+
+          sendButton.onclick = handleSubmit;
+
+          chatArea.appendChild(chatInput);
+          chatArea.appendChild(sendButton);
+
           panel.appendChild(header);
           panel.appendChild(content);
           panel.appendChild(loadingIndicator);
+          panel.appendChild(chatArea);
           document.body.appendChild(panel);
           console.log('New panel created and added to page');
           return true; // Panel was created and shown
