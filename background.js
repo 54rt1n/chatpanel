@@ -22,11 +22,29 @@ function setCurrentConversationId(id) {
 
 function broadcastToPanels(message) {
   console.log('Broadcasting to panels:', Array.from(activePanelTabs));
-  activePanelTabs.forEach(tabId => {
-    chrome.tabs.sendMessage(tabId, message).catch(() => {
-      // If we can't send to a tab, remove it from active panels
-      activePanelTabs.delete(tabId);
-    });
+  activePanelTabs.forEach(async tabId => {
+    try {
+      // First check if the tab still exists
+      const tab = await chrome.tabs.get(tabId).catch(() => null);
+      if (!tab) {
+        console.log('Tab no longer exists, removing from active panels:', tabId);
+        activePanelTabs.delete(tabId);
+        return;
+      }
+      
+      // Then try to send the message
+      await chrome.tabs.sendMessage(tabId, message).catch(error => {
+        console.log('Error sending message to tab:', tabId, error);
+        // Only remove the tab if it's a connection error
+        if (error.message.includes('Could not establish connection') || 
+            error.message.includes('receiving end does not exist')) {
+          activePanelTabs.delete(tabId);
+        }
+        // Otherwise, the tab might just be temporarily unresponsive
+      });
+    } catch (error) {
+      console.error('Error in broadcast to tab:', tabId, error);
+    }
   });
 }
 
@@ -442,33 +460,56 @@ async function processStream(reader) {
   console.log('Starting to process stream');
   currentStreamContent = ''; // Reset content at start of new stream
   let collectedContent = '';
+  let buffer = ''; // Buffer for incomplete chunks
   
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) {
         console.log('Stream complete');
+        // Process any remaining buffer content
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            const content = data.choices?.[0]?.delta?.content || data.choices?.[0]?.message?.content;
+            if (content) {
+              currentStreamContent += content;
+              collectedContent += content;
+              broadcastToPanels({
+                action: 'STREAM_CONTENT',
+                content,
+                isFirst
+              });
+              isFirst = false;
+            }
+          } catch (e) {
+            console.warn('Error processing final buffer:', e);
+          }
+        }
         break;
       }
       
       const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
+      buffer += chunk;
+      const lines = buffer.split('\n');
+      
+      // Keep the last line in the buffer if it's incomplete
+      buffer = lines.pop() || '';
       
       for (const line of lines) {
-        if (!line.trim()) continue;
-        if (line.includes('[DONE]')) continue;
+        if (!line.trim() || line.includes('[DONE]')) continue;
         
         try {
-          const jsonStr = line.replace(/^data: /, '');
-          const data = JSON.parse(jsonStr);
+          const jsonStr = line.replace(/^data: /, '').trim();
+          if (!jsonStr) continue;
           
+          const data = JSON.parse(jsonStr);
           const content = data.choices?.[0]?.delta?.content || data.choices?.[0]?.message?.content;
           if (!content) continue;
           
-          currentStreamContent += content; // Accumulate content
-          collectedContent += content; // Collect for history
+          currentStreamContent += content;
+          collectedContent += content;
           
-          // Broadcast to all active panels
           broadcastToPanels({
             action: 'STREAM_CONTENT',
             content,
@@ -477,24 +518,23 @@ async function processStream(reader) {
           
           isFirst = false;
         } catch (e) {
-          console.error('Error parsing streaming data:', e);
+          console.warn('Error parsing streaming data:', e, 'Line:', line);
+          // Don't break the stream on parse errors
+          continue;
         }
       }
     }
-    return collectedContent; // Return collected content for history
+    return collectedContent;
   } catch (error) {
     console.error('Error processing stream:', error);
-    // Notify all panels of error
     broadcastToPanels({
       action: 'SHOW_ERROR',
-      error: 'Error processing response stream'
+      error: 'Error processing response stream: ' + error.message
     });
-    throw error; // Re-throw to be handled by caller
+    throw error;
   } finally {
     console.log('Stream processing complete, hiding loading indicator');
-    // Hide loading for all panels
     broadcastToPanels({ action: 'HIDE_LOADING' });
-    // Clear stream state but keep content
     activeStream = null;
     activeStreamTabs.clear();
   }

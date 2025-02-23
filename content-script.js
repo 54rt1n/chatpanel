@@ -119,17 +119,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
   }
   else if (request.action === 'STREAM_CONTENT') {
-    // console.log('Processing stream content', {
-    //   isFirst: request.isFirst,
-    //   contentLength: request.content.length
-    // });
     const panel = document.querySelector('.ai-assistant-panel');
     if (panel) {
       const content = panel.querySelector('.panel-content');
       if (content) {
+        // Track if we should auto-scroll based on user's scroll position
+        const shouldAutoScroll = content.scrollHeight - content.scrollTop === content.clientHeight;
+        
         if (request.isFirst) {
           console.log('First chunk received, initializing content area');
           content.innerHTML = '';
+          // If content is empty and it's the first chunk, show default message
+          if (!request.content) {
+            content.innerHTML = '<p>Type a message below to chat about this page.</p>';
+            return true;
+          }
           // Add a pre element for formatting
           const pre = document.createElement('pre');
           pre.style.cssText = `
@@ -142,13 +146,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           content.appendChild(pre);
           console.log('Pre element created for formatted content');
         }
+        
         const pre = content.querySelector('pre');
         if (pre) {
           const formattedContent = formatContent(request.content);
           pre.innerHTML += formattedContent;
-          // Scroll to bottom to show new content
-          content.scrollTop = content.scrollHeight;
-          // console.log('Content chunk added and scrolled to bottom');
+          
+          // Only auto-scroll if we were at the bottom before
+          if (shouldAutoScroll) {
+            // Use requestAnimationFrame to ensure the DOM has updated
+            requestAnimationFrame(() => {
+              content.scrollTo({
+                top: content.scrollHeight,
+                behavior: 'smooth'
+              });
+            });
+          }
         } else {
           console.warn('Pre element not found for content append');
         }
