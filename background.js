@@ -1,7 +1,11 @@
 console.log('Background script loaded and running');
 
-// Global conversation state
+// Global state
 let currentConversationId = null;
+let currentStreamContent = '';
+let activePanelTabs = new Set();
+let activeStream = null;
+let activeStreamTabs = new Set();
 
 function generateConversationId() {
   return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -9,15 +13,19 @@ function generateConversationId() {
 
 function setCurrentConversationId(id) {
   currentConversationId = id;
-  // Broadcast to all tabs
-  chrome.tabs.query({}, (tabs) => {
-    tabs.forEach(tab => {
-      chrome.tabs.sendMessage(tab.id, {
-        action: 'UPDATE_CONVERSATION_ID',
-        conversationId: id
-      }).catch(() => {
-        // Ignore errors for inactive tabs
-      });
+  // Broadcast to all panels
+  broadcastToPanels({
+    action: 'UPDATE_CONVERSATION_ID',
+    conversationId: id
+  });
+}
+
+function broadcastToPanels(message) {
+  console.log('Broadcasting to panels:', Array.from(activePanelTabs));
+  activePanelTabs.forEach(tabId => {
+    chrome.tabs.sendMessage(tabId, message).catch(() => {
+      // If we can't send to a tab, remove it from active panels
+      activePanelTabs.delete(tabId);
     });
   });
 }
@@ -34,6 +42,7 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // Function to start a new conversation
 function startNewConversation() {
+  currentStreamContent = ''; // Clear content when starting new conversation
   setCurrentConversationId(generateConversationId());
 }
 
@@ -55,15 +64,12 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Add stream content management
-let currentStreamContent = '';
-
 // Handle extension icon click
 chrome.action.onClicked.addListener(async (tab) => {
   console.log('Extension icon clicked for tab:', tab.id);
   
   // Execute script to toggle panel
-  await chrome.scripting.executeScript({
+  const result = await chrome.scripting.executeScript({
     target: { tabId: tab.id },
     function: (currentContent, conversationId) => {
       console.log('Panel script executing');
@@ -317,9 +323,9 @@ chrome.action.onClicked.addListener(async (tab) => {
         console.log('New panel created and added to page');
 
         // If there's an active stream, add this tab to receive updates
-        chrome.runtime.sendMessage({ action: 'JOIN_STREAM' });
+        chrome.runtime.sendMessage({ action: 'JOIN_PANEL' });
 
-        return true; // Panel was created and shown
+        return { created: true, visible: true }; // New panel was created and is visible
       } else {
         console.log('Toggling existing panel');
         const isVisible = panel.style.display !== 'none';
@@ -344,11 +350,29 @@ chrome.action.onClicked.addListener(async (tab) => {
         }
         
         console.log('Panel visibility set to:', !isVisible);
-        return !isVisible;
+        return { created: false, visible: !isVisible }; // Return panel visibility state
       }
     },
-    args: [currentStreamContent, currentConversationId] // Pass both currentContent and conversationId
+    args: [currentStreamContent, currentConversationId]
   });
+  
+  // Handle panel visibility state
+  const panelState = result?.[0]?.result;
+  if (panelState?.visible) {
+    // Panel is visible (either new or shown), add to active panels
+    activePanelTabs.add(tab.id);
+    // Send current content if it exists
+    if (currentStreamContent) {
+      chrome.tabs.sendMessage(tab.id, {
+        action: 'STREAM_CONTENT',
+        content: currentStreamContent,
+        isFirst: true
+      });
+    }
+  } else {
+    // Panel is hidden, remove from active panels
+    activePanelTabs.delete(tab.id);
+  }
 });
 
 // Handle context menu clicks
@@ -365,10 +389,6 @@ const DEFAULT_MODEL = 'gpt-3.5-turbo';
 const DEFAULT_USER_ID = 'default_user';
 const DEFAULT_PERSONA_ID = 'default_persona';
 const DEFAULT_SYSTEM_MESSAGE = 'You are a helpful assistant that analyzes webpage content.';
-
-// Add stream management at the top level
-let activeStream = null;
-let activeStreamTabs = new Set();
 
 // Helper function to get settings from storage
 async function getSettings() {
@@ -419,8 +439,9 @@ async function getSettings() {
 async function processStream(reader) {
   let isFirst = true;
   const decoder = new TextDecoder();
-  console.log('Starting to process stream for tabs:', Array.from(activeStreamTabs));
+  console.log('Starting to process stream');
   currentStreamContent = ''; // Reset content at start of new stream
+  let collectedContent = '';
   
   try {
     while (true) {
@@ -445,40 +466,34 @@ async function processStream(reader) {
           if (!content) continue;
           
           currentStreamContent += content; // Accumulate content
+          collectedContent += content; // Collect for history
           
-          // Broadcast to all active tabs
-          for (const tabId of activeStreamTabs) {
-            console.log('Sending content chunk to tab:', tabId);
-            chrome.tabs.sendMessage(tabId, {
-              action: 'STREAM_CONTENT',
-              content,
-              isFirst
-            }).catch(error => {
-              console.error(`Error sending to tab ${tabId}:`, error);
-              activeStreamTabs.delete(tabId);
-            });
-          }
+          // Broadcast to all active panels
+          broadcastToPanels({
+            action: 'STREAM_CONTENT',
+            content,
+            isFirst
+          });
+          
           isFirst = false;
         } catch (e) {
           console.error('Error parsing streaming data:', e);
         }
       }
     }
+    return collectedContent; // Return collected content for history
   } catch (error) {
     console.error('Error processing stream:', error);
-    // Notify all tabs of error
-    for (const tabId of activeStreamTabs) {
-      chrome.tabs.sendMessage(tabId, {
-        action: 'SHOW_ERROR',
-        error: 'Error processing response stream'
-      });
-    }
+    // Notify all panels of error
+    broadcastToPanels({
+      action: 'SHOW_ERROR',
+      error: 'Error processing response stream'
+    });
+    throw error; // Re-throw to be handled by caller
   } finally {
     console.log('Stream processing complete, hiding loading indicator');
-    // Hide loading for all tabs
-    for (const tabId of activeStreamTabs) {
-      chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
-    }
+    // Hide loading for all panels
+    broadcastToPanels({ action: 'HIDE_LOADING' });
     // Clear stream state but keep content
     activeStream = null;
     activeStreamTabs.clear();
@@ -594,38 +609,72 @@ async function storeMessage(message, response, url, title, conversationId) {
     conversationId
   };
   
-  // Get existing history
-  const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
-  
-  // Add new entry
-  const updatedHistory = [...messageHistory, historyEntry];
-  
-  // Keep only the last 100 messages to prevent storage issues
-  const trimmedHistory = updatedHistory.slice(-100);
-  
-  // Store updated history
-  await chrome.storage.local.set({ 
-    messageHistory: trimmedHistory,
-    lastMessage: historyEntry // Store last message separately for quick access
-  }).catch(error => {
+  try {
+    // Get existing history
+    const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
+    
+    // Add new entry
+    const updatedHistory = [...messageHistory, historyEntry];
+    
+    // Keep only the last 100 messages to prevent storage issues
+    const trimmedHistory = updatedHistory.slice(-100);
+    
+    // Store updated history
+    await chrome.storage.local.set({ 
+      messageHistory: trimmedHistory,
+      lastMessage: historyEntry // Store last message separately for quick access
+    });
+    
+    console.log('Stored message in history. Total messages:', trimmedHistory.length);
+    return historyEntry;
+  } catch (error) {
     console.error('Error storing message history:', error);
-  });
-  
-  console.log('Stored message in history. Total messages:', trimmedHistory.length);
-  return historyEntry;
+    throw error; // Re-throw to be handled by caller
+  }
 }
 
 // Function to get conversation messages
 async function getConversationMessages(conversationId) {
-  const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
-  return messageHistory
-    .filter(msg => msg.conversationId === conversationId)
-    .map(msg => ({
-      role: msg.response ? 'assistant' : 'user',
-      content: msg.response || msg.message,
-      timestamp: msg.timestamp
-    }))
-    .sort((a, b) => a.timestamp - b.timestamp);
+  try {
+    const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
+    
+    // Filter and sort messages for this conversation
+    const conversationMessages = messageHistory
+      .filter(msg => msg.conversationId === conversationId)
+      .map(msg => ({
+        role: msg.response ? 'assistant' : 'user',
+        content: msg.response || msg.message,
+        timestamp: msg.timestamp
+      }))
+      .sort((a, b) => a.timestamp - b.timestamp);
+    
+    console.log(`Retrieved ${conversationMessages.length} messages for conversation ${conversationId}`);
+    return conversationMessages;
+  } catch (error) {
+    console.error('Error retrieving conversation messages:', error);
+    return []; // Return empty array on error to allow conversation to continue
+  }
+}
+
+// Add function to clear conversation history
+async function clearConversationHistory(conversationId) {
+  try {
+    const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
+    
+    // Filter out messages from the specified conversation
+    const updatedHistory = messageHistory.filter(msg => msg.conversationId !== conversationId);
+    
+    await chrome.storage.local.set({ 
+      messageHistory: updatedHistory,
+      lastMessage: updatedHistory[updatedHistory.length - 1] || null
+    });
+    
+    console.log(`Cleared history for conversation ${conversationId}`);
+    return true;
+  } catch (error) {
+    console.error('Error clearing conversation history:', error);
+    return false;
+  }
 }
 
 // Function to handle chat messages
@@ -722,77 +771,12 @@ async function handleChatMessage(message, url, pageContent, title, tabId, conver
       }
       
       activeStream = response.body.getReader();
-      
-      // Create a promise to collect the full response
-      const collectResponse = new Promise((resolve, reject) => {
-        let collected = '';
-        
-        processStream(activeStream)
-          .then(() => resolve(collected))
-          .catch(reject);
-          
-        // Override processStream temporarily to collect the response
-        const originalProcessStream = processStream;
-        processStream = async (reader) => {
-          currentStreamContent = ''; // Reset content
-          const decoder = new TextDecoder();
-          let isFirst = true;
-          
-          try {
-            while (true) {
-              const { value, done } = await reader.read();
-              if (done) break;
-              
-              const chunk = decoder.decode(value);
-              const lines = chunk.split('\n');
-              
-              for (const line of lines) {
-                if (!line.trim() || line.includes('[DONE]')) continue;
-                
-                try {
-                  const jsonStr = line.replace(/^data: /, '');
-                  const data = JSON.parse(jsonStr);
-                  
-                  const content = data.choices?.[0]?.delta?.content || data.choices?.[0]?.message?.content;
-                  if (!content) continue;
-                  
-                  collected += content;
-                  currentStreamContent += content;
-                  
-                  // Broadcast to all active tabs
-                  for (const tabId of activeStreamTabs) {
-                    chrome.tabs.sendMessage(tabId, {
-                      action: 'STREAM_CONTENT',
-                      content,
-                      isFirst
-                    }).catch(error => {
-                      console.error(`Error sending to tab ${tabId}:`, error);
-                      activeStreamTabs.delete(tabId);
-                    });
-                  }
-                  isFirst = false;
-                } catch (e) {
-                  console.error('Error parsing streaming data:', e);
-                }
-              }
-            }
-          } catch (error) {
-            reject(error);
-          } finally {
-            processStream = originalProcessStream;
-            activeStream = null;
-            activeStreamTabs.clear();
-            
-            // Hide loading indicator for all tabs
-            for (const tabId of activeStreamTabs) {
-              chrome.tabs.sendMessage(tabId, { action: 'HIDE_LOADING' });
-            }
-          }
-        };
-      });
-      
-      // Wait for the full response
-      fullResponse = await collectResponse;
+      try {
+        fullResponse = await processStream(activeStream);
+      } catch (error) {
+        console.error('Error processing stream:', error);
+        throw error;
+      }
     } else {
       console.log('Processing non-streaming response');
       const data = await response.json();
@@ -819,15 +803,15 @@ async function handleChatMessage(message, url, pageContent, title, tabId, conver
   }
 }
 
-// Update message listener to handle JOIN_STREAM action
+// Update message listener to handle panel actions
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log('Background script received message:', request);
   
-  if (request.action === 'JOIN_STREAM') {
+  if (request.action === 'JOIN_PANEL') {
     const tabId = sender.tab?.id;
-    if (tabId && activeStream) {
-      activeStreamTabs.add(tabId);
-      // Send current content immediately
+    if (tabId) {
+      activePanelTabs.add(tabId);
+      // Send current content immediately if it exists
       if (currentStreamContent) {
         chrome.tabs.sendMessage(tabId, {
           action: 'STREAM_CONTENT',
@@ -839,13 +823,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
-  else if (request.action === 'START_NEW_CONVERSATION') {
-    console.log('Starting new conversation');
-    startNewConversation();
+  else if (request.action === 'LEAVE_PANEL') {
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      activePanelTabs.delete(tabId);
+    }
     sendResponse({ success: true });
     return true;
   }
-  if (request.action === 'ANALYZE_PAGE') {
+  else if (request.action === 'START_NEW_CONVERSATION') {
+    console.log('Starting new conversation');
+    const oldConversationId = currentConversationId;
+    startNewConversation();
+    // Clear content in all panels
+    broadcastToPanels({
+      action: 'STREAM_CONTENT',
+      content: '',
+      isFirst: true
+    });
+    // Clear old conversation history if it exists
+    if (oldConversationId) {
+      clearConversationHistory(oldConversationId)
+        .catch(error => console.error('Error clearing old conversation:', error));
+    }
+    sendResponse({ success: true });
+    return true;
+  }
+  else if (request.action === 'ANALYZE_PAGE') {
     console.log('Starting page analysis');
     // Use the explicitly passed tabId from the popup, or fall back to sender.tab.id for content script messages
     const tabId = request.tabId || (sender.tab && sender.tab.id);
@@ -874,6 +878,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: false, error: 'No tab ID available' });
       return true;
     }
+
+    // Ensure sending tab is in active panels
+    activePanelTabs.add(tabId);
 
     handleChatMessage(
       request.data.message,

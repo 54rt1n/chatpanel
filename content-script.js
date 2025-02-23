@@ -30,6 +30,15 @@ document.addEventListener('ai_assistant_chat', (event) => {
   console.log('Content script received chat event:', event.detail);
   // Gather current page info for context
   const pageInfo = gatherPageInfo();
+  // Get conversation ID from the panel
+  const panel = document.querySelector('.ai-assistant-panel');
+  const conversationId = panel?.dataset?.conversationId;
+  
+  if (!conversationId) {
+    console.error('No conversation ID found');
+    return;
+  }
+
   chrome.runtime.sendMessage({
     action: 'CHAT_MESSAGE',
     data: {
@@ -37,10 +46,9 @@ document.addEventListener('ai_assistant_chat', (event) => {
       url: pageInfo.url,
       pageContent: pageInfo.text,
       title: pageInfo.title,
-      conversationId: event.detail.conversationId
+      conversationId: conversationId
     }
   }, (response) => {
-    //console.log('Got response from chat message:', response);
     if (chrome.runtime.lastError) {
       console.error('Error sending chat message:', chrome.runtime.lastError);
     }
