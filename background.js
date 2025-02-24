@@ -187,7 +187,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         closeBtn.onmouseout = () => closeBtn.style.opacity = '0.8';
         closeBtn.onclick = () => {
           console.log('Panel close button clicked');
-          panel.style.display = 'none';
+          panel.remove(); // Fully remove the panel instead of hiding it
           chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
         };
 
@@ -347,30 +347,10 @@ chrome.action.onClicked.addListener(async (tab) => {
 
         return { created: true, visible: true }; // New panel was created and is visible
       } else {
-        console.log('Toggling existing panel');
-        const isVisible = panel.style.display !== 'none';
-        panel.style.display = isVisible ? 'none' : 'flex';
-        
-        // If showing panel and there's current content, update it
-        if (!isVisible && currentContent) {
-          const content = panel.querySelector('.panel-content');
-          if (content) {
-            content.innerHTML = '';
-            const pre = document.createElement('pre');
-            pre.style.cssText = `
-              margin: 0;
-              white-space: pre-wrap;
-              word-wrap: break-word;
-              font-family: inherit;
-              line-height: inherit;
-            `;
-            pre.innerHTML = currentContent;
-            content.appendChild(pre);
-          }
-        }
-        
-        console.log('Panel visibility set to:', !isVisible);
-        return { created: false, visible: !isVisible }; // Return panel visibility state
+        console.log('Removing existing panel');
+        panel.remove();
+        chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
+        return { created: false, visible: false }; // Panel was removed
       }
     },
     args: [currentStreamContent, currentConversationId]
@@ -378,8 +358,8 @@ chrome.action.onClicked.addListener(async (tab) => {
   
   // Handle panel visibility state
   const panelState = result?.[0]?.result;
-  if (panelState?.visible) {
-    // Panel is visible (either new or shown), add to active panels
+  if (panelState?.created || panelState?.visible) {
+    // Panel is new or visible, add to active panels
     activePanelTabs.add(tab.id);
     // Send current content if it exists
     if (currentStreamContent) {
@@ -390,7 +370,7 @@ chrome.action.onClicked.addListener(async (tab) => {
       });
     }
   } else {
-    // Panel is hidden, remove from active panels
+    // Panel was removed, remove from active panels
     activePanelTabs.delete(tab.id);
   }
 });
