@@ -86,6 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <button class="${saveButtonClasses.join(' ')}" title="Save conversation to API" ${item.saved ? 'disabled' : ''}>
             ${item.saved ? 'Saved' : 'Save'}
           </button>
+          <button class="rejoin-btn" title="Rejoin this conversation">Rejoin</button>
           <button class="delete-btn" title="Delete this message">×</button>
           <div class="history-header">
             <div class="page-info">
@@ -125,6 +126,22 @@ document.addEventListener('DOMContentLoaded', async () => {
         await deleteMessage(timestamp);
         await renderHistory();
       }
+    }
+    else if (event.target.matches('.rejoin-btn')) {
+      const item = event.target.closest('.history-item');
+      if (!item) return;
+
+      const conversationId = item.dataset.conversationId;
+      if (!conversationId || conversationId === 'No conversation ID') {
+        alert('Cannot rejoin: No conversation ID available');
+        return;
+      }
+
+      // Simply notify background script to update conversation ID
+      chrome.runtime.sendMessage({
+        action: 'REJOIN_CONVERSATION',
+        conversationId: conversationId
+      });
     }
     else if (event.target.matches('.save-btn:not(.saved)')) {
       const saveBtn = event.target;

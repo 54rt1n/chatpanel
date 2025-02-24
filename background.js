@@ -660,14 +660,27 @@ async function getConversationMessages(conversationId) {
   try {
     const { messageHistory = [] } = await chrome.storage.local.get('messageHistory');
     
-    // Filter and sort messages for this conversation
+    // Filter messages for this conversation and create pairs of user/assistant messages
     const conversationMessages = messageHistory
       .filter(msg => msg.conversationId === conversationId)
-      .map(msg => ({
-        role: msg.response ? 'assistant' : 'user',
-        content: msg.response || msg.message,
-        timestamp: msg.timestamp
-      }))
+      .flatMap(msg => {
+        const messages = [{
+          role: 'user',
+          content: msg.message,
+          timestamp: msg.timestamp
+        }];
+        
+        // Only add assistant message if there was a response
+        if (msg.response) {
+          messages.push({
+            role: 'assistant',
+            content: msg.response,
+            timestamp: msg.timestamp + 1 // Ensure assistant message comes after user message
+          });
+        }
+        
+        return messages;
+      })
       .sort((a, b) => a.timestamp - b.timestamp);
     
     console.log(`Retrieved ${conversationMessages.length} messages for conversation ${conversationId}`);
@@ -869,6 +882,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       clearConversationHistory(oldConversationId)
         .catch(error => console.error('Error clearing old conversation:', error));
     }
+    sendResponse({ success: true });
+    return true;
+  }
+  else if (request.action === 'REJOIN_CONVERSATION') {
+    console.log('Rejoining conversation:', request.conversationId);
+    
+    // Set the current conversation ID to the one we're rejoining
+    currentConversationId = request.conversationId;
+    
+    // Broadcast the conversation ID update to all panels
+    broadcastToPanels({
+      action: 'UPDATE_CONVERSATION_ID',
+      conversationId: request.conversationId
+    });
+    
     sendResponse({ success: true });
     return true;
   }

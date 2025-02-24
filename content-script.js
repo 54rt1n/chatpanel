@@ -207,6 +207,10 @@ window.addEventListener('beforeunload', () => {
   if (panel) {
     panel.remove();
     // Notify background script
-    chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
+    try {
+      chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
+    } catch (error) {
+      console.error('Error sending leave panel message:', error);
+    }
   }
 });
