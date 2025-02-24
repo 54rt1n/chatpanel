@@ -5,26 +5,24 @@ import { panelManager } from './panelManager.js';
 logger.info('Background script loaded and running');
 
 // Initialize panel manager
-panelManager.initialize().catch(error => {
+panelManager.initialize().then(() => {
+  logger.info('Panel manager initialized successfully');
+}).catch(error => {
   logger.error('Failed to initialize panel manager:', error);
 });
-
-function generateConversationId() {
-  return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-}
 
 // Initialize conversation ID when extension starts
 chrome.runtime.onStartup.addListener(() => {
   logger.info('Extension starting up');
   logger.logSystemInfo();
-  panelManager.startNewConversation();
+  // Panel manager is already initialized
 });
 
 // Also initialize on install/update
 chrome.runtime.onInstalled.addListener(() => {
   logger.info('Extension installed/updated');
   logger.logSystemInfo();
-  panelManager.startNewConversation();
+  // Panel manager is already initialized
 });
 
 // Function to start a new conversation
@@ -73,10 +71,18 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 // Handle extension icon click
 chrome.action.onClicked.addListener(async (tab) => {
   console.log('Extension icon clicked for tab:', tab.id);
+  logger.info('Extension icon clicked', { tabId: tab.id, url: tab.url });
   
-  // Toggle panel visibility using panel manager
-  const isVisible = panelManager.visibilityState.get(tab.id) || false;
-  await panelManager.setPanelVisibility(tab.id, !isVisible);
+  try {
+    // Toggle panel visibility using panel manager
+    const isVisible = panelManager.visibilityState.get(tab.id) || false;
+    logger.debug('Current panel visibility:', { tabId: tab.id, isVisible });
+    
+    await panelManager.setPanelVisibility(tab.id, !isVisible);
+    logger.info('Panel visibility toggled successfully', { tabId: tab.id, newVisibility: !isVisible });
+  } catch (error) {
+    logger.error('Failed to toggle panel visibility:', error);
+  }
 });
 
 // Default values

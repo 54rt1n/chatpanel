@@ -195,7 +195,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     } else {
       console.warn('Panel not found when trying to show error');
     }
-  } else {
+  }
+  else if (request.action === 'UPDATE_PANEL_STATE') {
+    console.log('Updating panel state');
+    const panel = document.querySelector('.ai-assistant-panel');
+    if (panel) {
+      panel.style.display = request.isVisible ? 'flex' : 'none';
+      if (request.content) {
+        const content = panel.querySelector('.panel-content');
+        if (content) {
+          const pre = document.createElement('pre');
+          pre.style.cssText = `
+            margin: 0;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
+            line-height: inherit;
+          `;
+          pre.innerHTML = formatContent(request.content);
+          content.innerHTML = '';
+          content.appendChild(pre);
+        }
+      }
+      if (request.conversationId) {
+        panel.dataset.conversationId = request.conversationId;
+        const conversationIdDisplay = panel.querySelector('div[title]');
+        if (conversationIdDisplay) {
+          conversationIdDisplay.title = request.conversationId;
+          conversationIdDisplay.textContent = request.conversationId;
+        }
+      }
+    }
+  }
+  else if (request.action === 'UPDATE_CONVERSATION') {
+    console.log('Updating conversation');
+    const panel = document.querySelector('.ai-assistant-panel');
+    if (panel) {
+      panel.dataset.conversationId = request.conversationId;
+      const conversationIdDisplay = panel.querySelector('div[title]');
+      if (conversationIdDisplay) {
+        conversationIdDisplay.title = request.conversationId;
+        conversationIdDisplay.textContent = request.conversationId;
+      }
+      const content = panel.querySelector('.panel-content');
+      if (content) {
+        content.innerHTML = request.content ? 
+          `<pre>${formatContent(request.content)}</pre>` : 
+          '<p>Type a message below to chat about this page.</p>';
+      }
+    }
+  }
+  else {
     console.warn('Unknown message action received:', request.action);
   }
 
