@@ -51,6 +51,8 @@ document.addEventListener('ai_assistant_chat', (event) => {
   }, (response) => {
     if (chrome.runtime.lastError) {
       console.error('Error sending chat message:', chrome.runtime.lastError);
+    } else {
+      console.debug('Chat message sent successfully', { response });
     }
   });
 });
@@ -198,4 +200,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   return true;
+});
+
+// Save state before unload
+window.addEventListener('beforeunload', () => {
+  const panel = document.querySelector('.ai-assistant-panel');
+  if (panel) {
+    const content = panel.querySelector('.panel-content');
+    chrome.runtime.sendMessage({
+      action: 'SAVE_PANEL_STATE',
+      state: {
+        isVisible: panel.style.display !== 'none',
+        scrollPosition: content?.scrollTop || 0,
+        conversationId: panel.dataset.conversationId
+      }
+    });
+  }
 });

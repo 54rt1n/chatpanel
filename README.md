@@ -1,6 +1,6 @@
 # Webpage Capture Assistant
 
-A Chrome/Brave extension that captures webpage content and sends it to a chat completions API (e.g., OpenAI) for analysis.
+A Chrome/Brave extension that captures webpage content and sends it to a extended chat completions API (e.g., AI Mind) for analysis.
 
 ## Features
 
