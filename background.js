@@ -21,7 +21,7 @@ function setCurrentConversationId(id) {
 }
 
 function broadcastToPanels(message) {
-  console.log('Broadcasting to panels:', Array.from(activePanelTabs));
+  // console.log('Broadcasting to panels:', Array.from(activePanelTabs));
   activePanelTabs.forEach(async tabId => {
     try {
       // First check if the tab still exists
@@ -187,6 +187,7 @@ chrome.action.onClicked.addListener(async (tab) => {
         closeBtn.onclick = () => {
           console.log('Panel close button clicked');
           panel.style.display = 'none';
+          chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
         };
 
         buttonContainer.appendChild(newConvBtn);
@@ -436,7 +437,7 @@ async function getSettings() {
 
   return {
     apiKey: result.apiKey,
-    apiEndpoint: result.apiEndpoint || 'http://localhost:8000/v1/chat/completions',
+    apiEndpoint: result.apiEndpoint || 'http://localhost:8000/',
     userId: result.userId || DEFAULT_USER_ID,
     personaId: result.personaId || DEFAULT_PERSONA_ID,
     model: result.model || DEFAULT_MODEL,
@@ -752,14 +753,14 @@ async function handleChatMessage(message, url, pageContent, title, tabId, conver
       }
     ];
 
+    const workspaceContent = "URL: " + url + "\nTitle: " + title + "\nContent: " + pageContent;
+
     const requestBody = {
       messages,
       metadata: {
         user_id: settings.userId,
         persona_id: settings.personaId,
-        url: url,
-        title: title,
-        workspace_content: pageContent,
+        workspace_content: workspaceContent,
         thought_content: null,
         conversation_id: conversationId
       },
@@ -779,7 +780,8 @@ async function handleChatMessage(message, url, pageContent, title, tabId, conver
     if (settings.minP) requestBody.min_p = settings.minP;
 
     console.log('Making chat API request to:', settings.apiEndpoint);
-    const response = await fetch(settings.apiEndpoint, {
+    const uri = settings.apiEndpoint + '/v1/chat/completions';
+    const response = await fetch(uri, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
