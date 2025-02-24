@@ -199,3 +199,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   return true;
 });
+
+// Add cleanup handler for page unload
+window.addEventListener('beforeunload', () => {
+  console.log('Page unloading, cleaning up panel');
+  const panel = document.querySelector('.ai-assistant-panel');
+  if (panel) {
+    panel.remove();
+    // Notify background script
+    chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
+  }
+});

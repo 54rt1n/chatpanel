@@ -34,7 +34,8 @@ function broadcastToPanels(message) {
       
       // Then try to send the message
       await chrome.tabs.sendMessage(tabId, message).catch(error => {
-        console.log('Error sending message to tab:', tabId, error);
+        // Getting an error here may be expected if the tab is not loaded yet or is not responding
+        // console.log('Error sending message to tab:', tabId, error);
         // Only remove the tab if it's a connection error
         if (error.message.includes('Could not establish connection') || 
             error.message.includes('receiving end does not exist')) {
@@ -898,10 +899,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!tabId) {
       console.error('No tab ID available for analysis');
       sendResponse({ success: false, error: 'No tab ID available' });
-      return true;
+      return false; // No async response needed
     }
     
-    callAIEndpoint(request.data, tabId)
+    // Create a Promise race between our operation and a timeout
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Operation timed out')), 240000) // 4 minute timeout
+    );
+
+    Promise.race([
+      callAIEndpoint(request.data, tabId),
+      timeoutPromise
+    ])
       .then(response => {
         console.log('Analysis complete:', response);
         sendResponse(response);
@@ -910,6 +919,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error('Error in message handler:', error);
         sendResponse({ success: false, error: error.message });
       });
+    
     return true;
   }
   else if (request.action === 'CHAT_MESSAGE') {
@@ -918,20 +928,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (!tabId) {
       console.error('No tab ID available for chat');
       sendResponse({ success: false, error: 'No tab ID available' });
-      return true;
+      return false; // No async response needed
     }
 
     // Ensure sending tab is in active panels
     activePanelTabs.add(tabId);
 
-    handleChatMessage(
-      request.data.message,
-      request.data.url,
-      request.data.pageContent,
-      request.data.title,
-      tabId,
-      request.data.conversationId
-    )
+    // Create a Promise race between our operation and a timeout
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Operation timed out')), 240000) // 4 minute timeout
+    );
+
+    Promise.race([
+      handleChatMessage(
+        request.data.message,
+        request.data.url,
+        request.data.pageContent,
+        request.data.title,
+        tabId,
+        request.data.conversationId
+      ),
+      timeoutPromise
+    ])
       .then(response => {
         console.log('Chat handling complete:', response);
         sendResponse(response);
@@ -940,6 +958,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         console.error('Error in chat handler:', error);
         sendResponse({ success: false, error: error.message });
       });
+
     return true;
+  }
+});
+
+// Add cleanup listeners for tabs
+chrome.tabs.onRemoved.addListener((tabId) => {
+  console.log('Tab removed, cleaning up panel:', tabId);
+  activePanelTabs.delete(tabId);
+  activeStreamTabs.delete(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === 'loading') {
+    console.log('Tab navigating, cleaning up panel:', tabId);
+    activePanelTabs.delete(tabId);
+    activeStreamTabs.delete(tabId);
   }
 }); 
