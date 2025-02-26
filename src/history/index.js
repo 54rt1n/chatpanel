@@ -283,6 +283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div class="detail-meta">
           <span class="detail-date">${formattedDate}</span>
           <span class="detail-agent">${escapeHtml(agentName)}</span>
+          <span class="detail-id">ID: ${escapeHtml(conversation.id)}</span>
         </div>
       </div>
       <div class="detail-actions">
@@ -405,8 +406,51 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
       
       if (response.success) {
-        // Open a new tab with the extension popup
-        chrome.tabs.create({ url: 'popup.html?action=rejoin&conversationId=' + conversationId });
+        // Instead of creating a new tab, try to find an existing tab with the page that had this conversation
+        const conversation = conversations.find(c => c.id === conversationId);
+        if (conversation && conversation.url) {
+          // If we have the URL, navigate to it and send a message to open the chat panel
+          const tabs = await chrome.tabs.query({url: conversation.url});
+          
+          if (tabs.length > 0) {
+            // If a tab with this URL exists, activate it and send a message to show the panel
+            await chrome.tabs.update(tabs[0].id, {active: true});
+            await chrome.tabs.sendMessage(tabs[0].id, {
+              action: 'OPEN_CHAT_PANEL',
+              conversationId
+            }).catch(error => {
+              // If we can't send a message, the content script might not be loaded
+              // Just navigate to the URL
+              chrome.tabs.update(tabs[0].id, {url: conversation.url});
+            });
+            window.close(); // Close the history page
+            return;
+          }
+          
+          // If no tab with this URL exists, create a new one
+          chrome.tabs.create({url: conversation.url}, async (tab) => {
+            // Wait for the tab to load, then send the message to open the panel
+            chrome.tabs.onUpdated.addListener(function listener(tabId, changeInfo) {
+              if (tabId === tab.id && changeInfo.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(listener);
+                
+                // Wait a moment for content scripts to initialize
+                setTimeout(() => {
+                  chrome.tabs.sendMessage(tab.id, {
+                    action: 'OPEN_CHAT_PANEL',
+                    conversationId
+                  }).catch(err => console.error('Error opening chat panel:', err));
+                }, 500);
+              }
+            });
+          });
+        } else {
+          // Fallback - just open the popup with the rejoin parameter
+          chrome.runtime.openOptionsPage();
+          setTimeout(() => {
+            chrome.tabs.create({url: `popup.html?action=rejoin&conversationId=${conversationId}`});
+          }, 100);
+        }
       } else {
         throw new Error(response.error || 'Failed to rejoin conversation');
       }
@@ -430,8 +474,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         throw new Error(response.error || 'Failed to export conversation');
       }
       
-      // Create download file
+      // Add agent name to the export
       const data = response.data;
+      // Find the agent name based on the agent ID
+      const agent = agents.find(a => a.id === data.agentId);
+      if (agent) {
+        data.agentName = agent.name;
+      }
+      
+      // Create download file
       const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       

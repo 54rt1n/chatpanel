@@ -7,6 +7,7 @@
 
 import PanelManager from './panel-manager';
 import MessageHandler from './message-handler';
+import { safeSendMessage } from './utils';
 
 // Initialize global instances
 const panelManager = new PanelManager();
@@ -54,11 +55,9 @@ function initialize() {
     console.log('Page unloading, cleaning up panel');
     panelManager.removePanel();
     // Notify background script
-    try {
-      chrome.runtime.sendMessage({ action: 'LEAVE_PANEL' });
-    } catch (error) {
+    safeSendMessage({ action: 'LEAVE_PANEL' }).catch(error => {
       console.error('Error sending leave panel message:', error);
-    }
+    });
   });
 }
 

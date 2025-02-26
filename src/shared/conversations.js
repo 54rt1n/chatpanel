@@ -169,82 +169,105 @@ class ConversationManager {
     }
   }
 
-  /**
-   * Export a conversation to a JSON file
-   */
-  async exportConversation(conversationId) {
-    try {
-      const messages = await this.getConversationMessages(conversationId);
-      const data = await this.storage.get('messageHistory', []);
-      const messageHistory = data.messageHistory || [];
-      
-      // Find first message for title information
-      const firstHistoryEntry = messageHistory.find(msg => msg.conversationId === conversationId);
-      
-      const exportData = {
-        id: conversationId,
-        title: firstHistoryEntry?.title || 'Exported Conversation',
-        url: firstHistoryEntry?.url || '',
-        timestamp: firstHistoryEntry?.timestamp || Date.now(),
-        agentId: firstHistoryEntry?.agentId || '',
-        messages: messages
-      };
-      
-      return exportData;
-    } catch (error) {
-      console.error('Error exporting conversation:', error);
-      throw error;
+/**
+ * Export a conversation to a JSON file
+ */
+async exportConversation(conversationId) {
+  try {
+    const messages = await this.getConversationMessages(conversationId);
+    const data = await this.storage.get('messageHistory', []);
+    const messageHistory = data.messageHistory || [];
+    
+    // Find first message for title information
+    const firstHistoryEntry = messageHistory.find(msg => msg.conversationId === conversationId);
+    
+    // Get agent information
+    let agentInfo = null;
+    if (firstHistoryEntry?.agentId) {
+      // Try to get agent data from storage
+      const agentData = await this.storage.get('agents', []);
+      const agents = agentData.agents || [];
+      agentInfo = agents.find(a => a.id === firstHistoryEntry.agentId);
     }
+    
+    const exportData = {
+      id: conversationId,
+      title: firstHistoryEntry?.title || 'Exported Conversation',
+      url: firstHistoryEntry?.url || '',
+      timestamp: firstHistoryEntry?.timestamp || Date.now(),
+      agentId: firstHistoryEntry?.agentId || '',
+      agentName: agentInfo?.name || 'Unknown Agent', // Include agent name
+      model: agentInfo?.model || 'Unknown Model', // Include agent model
+      messages: messages
+    };
+    
+    return exportData;
+  } catch (error) {
+    console.error('Error exporting conversation:', error);
+    throw error;
   }
+}
 
-  /**
-   * Import a conversation from an exported JSON file
-   */
-  async importConversation(exportData, newAgentId = null) {
-    try {
-      const data = await this.storage.get('messageHistory', []);
-      const messageHistory = data.messageHistory || [];
+/**
+ * Import a conversation from an exported JSON file
+ */
+async importConversation(exportData, newAgentId = null) {
+  try {
+    const data = await this.storage.get('messageHistory', []);
+    const messageHistory = data.messageHistory || [];
+    
+    // Generate a new conversation ID
+    const newConversationId = 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    
+    // If no agent ID was provided but we have an agent name, try to find the agent
+    if (!newAgentId && exportData.agentName) {
+      const agentData = await this.storage.get('agents', []);
+      const agents = agentData.agents || [];
       
-      // Generate a new conversation ID
-      const newConversationId = 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-      
-      // Create history entries for each message pair
-      const newEntries = [];
-      for (let i = 0; i < exportData.messages.length; i += 2) {
-        const userMessage = exportData.messages[i];
-        const assistantMessage = exportData.messages[i + 1];
-        
-        if (userMessage && userMessage.role === 'user') {
-          newEntries.push({
-            timestamp: userMessage.timestamp || Date.now() + i,
-            url: exportData.url || '',
-            title: exportData.title || 'Imported Conversation',
-            message: userMessage.content,
-            response: assistantMessage?.content || '',
-            conversationId: newConversationId,
-            agentId: newAgentId || exportData.agentId || ''
-          });
-        }
+      // Look for agent with matching name
+      const matchingAgent = agents.find(a => a.name === exportData.agentName);
+      if (matchingAgent) {
+        newAgentId = matchingAgent.id;
       }
-      
-      // Add to history
-      const updatedHistory = [...messageHistory, ...newEntries];
-      
-      // Keep only the last 500 messages
-      const trimmedHistory = updatedHistory.slice(-500);
-      
-      await this.storage.set('messageHistory', trimmedHistory);
-      await this.storage.set('lastMessage', trimmedHistory[trimmedHistory.length - 1] || null);
-      
-      return {
-        conversationId: newConversationId,
-        messageCount: newEntries.length
-      };
-    } catch (error) {
-      console.error('Error importing conversation:', error);
-      throw error;
     }
+    
+    // Create history entries for each message pair
+    const newEntries = [];
+    for (let i = 0; i < exportData.messages.length; i += 2) {
+      const userMessage = exportData.messages[i];
+      const assistantMessage = exportData.messages[i + 1];
+      
+      if (userMessage && userMessage.role === 'user') {
+        newEntries.push({
+          timestamp: userMessage.timestamp || Date.now() + i,
+          url: exportData.url || '',
+          title: exportData.title || 'Imported Conversation',
+          message: userMessage.content,
+          response: assistantMessage?.content || '',
+          conversationId: newConversationId,
+          agentId: newAgentId || exportData.agentId || ''
+        });
+      }
+    }
+    
+    // Add to history
+    const updatedHistory = [...messageHistory, ...newEntries];
+    
+    // Keep only the last 500 messages
+    const trimmedHistory = updatedHistory.slice(-500);
+    
+    await this.storage.set('messageHistory', trimmedHistory);
+    await this.storage.set('lastMessage', trimmedHistory[trimmedHistory.length - 1] || null);
+    
+    return {
+      conversationId: newConversationId,
+      messageCount: newEntries.length
+    };
+  } catch (error) {
+    console.error('Error importing conversation:', error);
+    throw error;
   }
+}
   
   /**
    * Get all conversations

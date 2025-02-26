@@ -5,6 +5,7 @@
  */
 
 import { gatherPageInfo } from './index';
+import { safeSendMessage } from './utils';
 
 class MessageHandler {
   constructor(panelManager) {
@@ -162,7 +163,7 @@ class MessageHandler {
       return;
     }
     
-    chrome.runtime.sendMessage({
+    safeSendMessage({
       action: 'CHAT_MESSAGE',
       data: {
         message: event.detail.message,
@@ -172,11 +173,8 @@ class MessageHandler {
         conversationId: conversationId,
         agentId: agentId
       }
-    }, (response) => {
-      if (chrome.runtime.lastError) {
-        console.error('Error sending chat message:', chrome.runtime.lastError);
-        this.panel.showError('Error sending chat message: ' + chrome.runtime.lastError.message);
-      }
+    }, (error) => {
+      this.panel.showError(error.message);
     });
   }
 }

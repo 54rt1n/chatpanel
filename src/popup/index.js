@@ -18,6 +18,62 @@ document.addEventListener('DOMContentLoaded', async () => {
   const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
   const activeTab = tabs[0];
 
+  // Check for URL parameters (for rejoining conversations)
+  const urlParams = new URLSearchParams(window.location.search);
+  const action = urlParams.get('action');
+  const conversationId = urlParams.get('conversationId');
+  
+  // If we have a rejoin action, handle it immediately
+  if (action === 'rejoin' && conversationId) {
+    try {
+      loadingEl.style.display = 'flex';
+      showStatus('Rejoining conversation...', false);
+      
+      // Send message to rejoin the conversation
+      const response = await chrome.runtime.sendMessage({
+        action: 'REJOIN_CONVERSATION',
+        conversationId
+      });
+      
+      if (response.success) {
+        showStatus('Successfully rejoined conversation', false);
+        
+        // Wait a bit, then try to get the agents and open the chat panel
+        setTimeout(async () => {
+          try {
+            // Get agents info
+            const agentsResponse = await chrome.runtime.sendMessage({ action: 'GET_AGENTS' });
+            
+            if (agentsResponse.success) {
+              // Find the active tab
+              const currentTabs = await chrome.tabs.query({ active: true, currentWindow: true });
+              if (currentTabs.length > 0) {
+                // Send message to open chat panel with the conversation
+                await chrome.tabs.sendMessage(currentTabs[0].id, {
+                  action: 'OPEN_CHAT_PANEL',
+                  agents: agentsResponse.agents,
+                  activeAgentId: response.agentId
+                });
+                
+                // Close popup
+                window.close();
+              }
+            }
+          } catch (err) {
+            console.error('Error opening chat panel:', err);
+          }
+        }, 500);
+      } else {
+        showStatus('Failed to rejoin conversation: ' + (response.error || 'Unknown error'), true);
+        loadingEl.style.display = 'none';
+      }
+    } catch (error) {
+      console.error('Error rejoining conversation:', error);
+      showStatus('Error rejoining conversation: ' + error.message, true);
+      loadingEl.style.display = 'none';
+    }
+  }
+
   // Initialize agent selector
   await initializeAgentSelector();
 

@@ -42,7 +42,7 @@ class AgentManager {
       id: 'agent_' + Date.now(),
       name: 'AI Assistant',
       systemMessage: 'You are a helpful assistant that analyzes webpage content.',
-      model: 'gpt-3.5-turbo',
+      model: 'deepseek-ai/DeepSeek-R1',
       currentConversationId: this.generateConversationId(),
       temperature: 0.7,
       maxTokens: null,
