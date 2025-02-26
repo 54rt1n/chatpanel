@@ -13,6 +13,9 @@ function generateConversationId() {
 
 function setCurrentConversationId(id) {
   currentConversationId = id;
+  // Store the conversation ID in storage for persistence
+  chrome.storage.local.set({ currentConversationId: id })
+    .catch(error => console.error('Error storing conversation ID:', error));
   // Broadcast to all panels
   broadcastToPanels({
     action: 'UPDATE_CONVERSATION_ID',
@@ -49,24 +52,49 @@ function broadcastToPanels(message) {
   });
 }
 
-// Initialize conversation ID when extension starts
+// Initialize conversation ID from storage or create a new one
+async function initializeConversationId() {
+  try {
+    const result = await chrome.storage.local.get('currentConversationId');
+    const storedId = result.currentConversationId;
+    
+    if (storedId) {
+      console.log('Restoring conversation ID from storage:', storedId);
+      currentConversationId = storedId;
+    } else {
+      console.log('No stored conversation ID, generating new one');
+      const newId = generateConversationId();
+      setCurrentConversationId(newId);
+    }
+  } catch (error) {
+    console.error('Error initializing conversation ID:', error);
+    // Fallback to generating a new ID
+    setCurrentConversationId(generateConversationId());
+  }
+}
+
+// Initialize conversation ID on startup (only if not already set)
 chrome.runtime.onStartup.addListener(() => {
-  setCurrentConversationId(generateConversationId());
+  if (!currentConversationId) {
+    initializeConversationId();
+  }
 });
 
-// Also initialize on install/update
+// Initialize on install/update (only if not already set)
 chrome.runtime.onInstalled.addListener(() => {
-  setCurrentConversationId(generateConversationId());
+  if (!currentConversationId) {
+    initializeConversationId();
+  }
 });
+
+// Initialize conversation ID immediately
+initializeConversationId();
 
 // Function to start a new conversation
 function startNewConversation() {
   currentStreamContent = ''; // Clear content when starting new conversation
   setCurrentConversationId(generateConversationId());
 }
-
-// Initialize conversation ID immediately
-setCurrentConversationId(generateConversationId());
 
 // Initialize context menu
 chrome.runtime.onInstalled.addListener(() => {
