@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Webpage Capture Assistant - Options</title>
+  <style>
+    body {
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .form-section {
+      border: 1px solid #ddd;
+      padding: 15px;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      background-color: #fff;
+    }
+
+    .form-section h2 {
+      margin-top: 0;
+      font-size: 1.2em;
+      color: #333;
+    }
+
+    label {
+      font-weight: bold;
+    }
+
+    input[type="text"],
+    input[type="number"],
+    textarea {
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    textarea {
+      min-height: 100px;
+      font-family: monospace;
+      resize: vertical;
+    }
+
+    input[type="number"] {
+      width: 120px;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 15px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.3s;
+      align-self: flex-start;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    button.secondary-btn {
+      background-color: #607d8b;
+    }
+
+    button.secondary-btn:hover {
+      background-color: #546e7a;
+    }
+
+    button.delete-btn {
+      background-color: #f44336;
+      color: white;
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    button.delete-btn:hover {
+      background-color: #d32f2f;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .success {
+      background-color: #dff0d8;
+      color: #3c763d;
+      border: 1px solid #d6e9c6;
+    }
+
+    .error {
+      background-color: #f2dede;
+      color: #a94442;
+      border: 1px solid #ebccd1;
+    }
+
+    small {
+      color: #666;
+      font-size: 12px;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      margin: 0;
+    }
+
+    /* Agents section styles */
+    .agents-list {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .agent-item {
+      border: 1px solid #ddd;
+      padding: 16px;
+      border-radius: 4px;
+      background-color: #f9f9f9;
+      position: relative;
+    }
+
+    .agent-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .agent-name-input {
+      font-weight: bold;
+      font-size: 16px;
+      padding: 8px;
+      width: 250px;
+    }
+
+    .agent-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 15px;
+    }
+
+    .agent-config {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .config-section {
+      margin-bottom: 15px;
+    }
+
+    .full-width {
+      grid-column: span 2;
+    }
+
+    .section-title {
+      font-weight: bold;
+      font-size: 14px;
+      margin-bottom: 6px;
+      color: #555;
+    }
+
+    .collapse-btn {
+      background: none;
+      border: none;
+      color: #607d8b;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 8px;
+      transition: all 0.2s;
+      align-self: flex-start;
+    }
+
+    .collapse-btn:hover {
+      color: #455a64;
+      background-color: rgba(0, 0, 0, 0.05);
+      border-radius: 4px;
+    }
+
+    .drag-handle {
+      cursor: grab;
+      opacity: 0.5;
+      padding: 4px;
+      transition: opacity 0.2s;
+    }
+
+    .drag-handle:hover {
+      opacity: 1;
+    }
+
+    .advanced-settings {
+      background-color: #f5f5f5;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 12px;
+      margin-top: 10px;
+    }
+
+    .advanced-settings h4 {
+      margin-top: 0;
+      margin-bottom: 12px;
+      color: #555;
+      font-size: 14px;
+    }
+
+    .advanced-toggle {
+      background: none;
+      border: none;
+      color: #2196F3;
+      cursor: pointer;
+      padding: 4px 0;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    .advanced-toggle:hover {
+      text-decoration: underline;
+    }
+
+    .nav-btns {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 20px;
+    }
+
+    .nav-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: none;
+      border: none;
+      color: #2196F3;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 4px;
+      transition: background-color 0.2s;
+    }
+
+    .nav-btn:hover {
+      background-color: rgba(33, 150, 243, 0.1);
+    }
+
+    @media (max-width: 768px) {
+      .agent-config {
+        grid-template-columns: 1fr;
+      }
+
+      .full-width {
+        grid-column: span 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="nav-btns">
+      <h1>Webpage Capture Assistant Options</h1>
+      <button id="historyBtn" class="nav-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 8v4l3 3"></path>
+          <circle cx="12" cy="12" r="10"></circle>
+        </svg>
+        View History
+      </button>
+    </div>
+    
+    <div class="form-section">
+      <h2>Connection Settings</h2>
+      <div class="form-group">
+        <label for="apiEndpoint">API Endpoint:</label>
+        <input type="text" id="apiEndpoint" placeholder="Enter API endpoint (e.g., http://localhost:8000/v1/chat/completions)">
+        <small>The endpoint where your model is running.</small>
+      </div>
+
+      <div class="form-group">
+        <label for="apiKey">API Key:</label>
+        <input type="text" id="apiKey" placeholder="Enter your API key">
+        <small>Your API key will be stored securely in Chrome storage.</small>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>User Settings</h2>
+      <div class="form-group">
+        <label for="userId">User ID:</label>
+        <input type="text" id="userId" placeholder="Enter your user ID">
+        <small>Identifier for the current user.</small>
+      </div>
+    </div>
+
+    <div class="form-section">
+      <h2>Agents</h2>
+      <div id="agentsList" class="agents-list">
+        <!-- Agent items dynamically inserted here -->
+      </div>
+      <div class="agent-actions">
+        <button id="addAgentBtn" class="secondary-btn">Add New Agent</button>
+      </div>
+    </div>
+    
+    <button id="saveBtn">Save All Settings</button>
+    <div id="status" class="status"></div>
+  </div>
+
+  <!-- Agent item template -->
+  <template id="agentTemplate">
+    <div class="agent-item">
+      <div class="agent-header">
+        <span class="drag-handle">☰</span>
+        <input type="text" class="agent-name-input" placeholder="Agent Name">
+        <button class="collapse-btn">▼</button>
+      </div>
+      
+      <div class="agent-config">
+        <div class="config-section">
+          <div class="section-title">Model</div>
+          <input type="text" class="agent-model" placeholder="Model name (e.g., gpt-3.5-turbo)">
+        </div>
+        
+        <div class="config-section">
+          <div class="section-title">Temperature</div>
+          <input type="number" class="agent-temperature" min="0" max="2" step="0.1" placeholder="0.7">
+        </div>
+
+        <div class="config-section">
+          <div class="section-title">Max Tokens</div>
+          <input type="number" class="agent-max-tokens" min="1" placeholder="Optional">
+        </div>
+        
+        <div class="config-section">
+          <div class="section-title">Top P</div>
+          <input type="number" class="agent-top-p" min="0" max="1" step="0.1" placeholder="Optional">
+        </div>
+      </div>
+      
+      <div class="config-section full-width">
+        <div class="section-title">System Message</div>
+        <textarea class="agent-system-message" placeholder="Define how the agent should behave"></textarea>
+      </div>
+      
+      <div class="advanced-settings" style="display: none;">
+        <h4>Advanced Settings</h4>
+        
+        <div class="agent-config">
+          <div class="config-section">
+            <div class="section-title">Top K</div>
+            <input type="number" class="agent-top-k" min="1" placeholder="Optional">
+          </div>
+          
+          <div class="config-section">
+            <div class="section-title">Presence Penalty</div>
+            <input type="number" class="agent-presence-penalty" min="-2" max="2" step="0.1" placeholder="Optional">
+          </div>
+          
+          <div class="config-section">
+            <div class="section-title">Frequency Penalty</div>
+            <input type="number" class="agent-frequency-penalty" min="-2" max="2" step="0.1" placeholder="Optional">
+          </div>
+          
+          <div class="config-section">
+            <div class="section-title">Repetition Penalty</div>
+            <input type="number" class="agent-repetition-penalty" min="1" step="0.1" placeholder="Optional">
+          </div>
+          
+          <div class="config-section">
+            <div class="section-title">Min P</div>
+            <input type="number" class="agent-min-p" min="0" max="1" step="0.1" placeholder="Optional">
+          </div>
+          
+          <div class="config-section checkbox-group">
+            <input type="checkbox" class="agent-stream" id="agent-stream" checked>
+            <label for="agent-stream">Enable Streaming</label>
+          </div>
+        </div>
+      </div>
+      
+      <div class="agent-actions">
+        <button class="advanced-toggle">Show Advanced Settings</button>
+        <button class="delete-btn">Delete Agent</button>
+      </div>
+    </div>
+  </template>
+
+  <script src="index.js" type="module"></script>
+</body>
+</html>

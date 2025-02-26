@@ -1,88 +1,95 @@
 # Webpage Capture Assistant
 
-A Chrome/Brave extension that captures webpage content and sends it to a chat completions API (e.g., OpenAI) for analysis.
+A Chrome extension that captures webpage content and sends it to a chat completions API for analysis. This extension supports multiple AI agents, each with their own persistent conversation threads.
 
 ## Features
 
-- Captures current webpage content (text and URL)
-- Sends captured content to OpenAI's chat completions API
-- Displays AI-generated analysis in a clean popup interface
-- Secure API key storage
-- Modern, user-friendly interface
+- Analyze webpages with AI assistance
+- Multiple configurable AI agents with different personalities and settings
+- Persistent conversation history
+- Chat panel that overlays on any webpage
+- Support for different LLM providers (via API endpoint configuration)
+- Agent-specific conversation history
 
-## Installation
+## Development Setup
 
-### Developer Mode (Local Installation)
+### Prerequisites
 
-1. Clone or download this repository
-2. Open Chrome/Brave and navigate to `chrome://extensions/`
-3. Enable "Developer mode" in the top right corner
-4. Click "Load unpacked" and select the directory containing the extension files
-5. The extension icon should appear in your browser toolbar
+- Node.js (v14 or higher)
+- npm (v6 or higher)
 
-### Configuration
+### Installation
 
-1. Click the extension icon in your toolbar
-2. Click the gear icon or right-click and select "Options"
-3. Enter your OpenAI API key
-4. Click "Save"
+1. Clone the repository:
+   ```
+   git clone [repository-url]
+   cd webpage-capture-assistant
+   ```
 
-## Usage
+2. Install dependencies:
+   ```
+   npm install
+   ```
 
-1. Navigate to any webpage you want to analyze
-2. Click the extension icon in your toolbar
-3. Click "Capture & Analyze Page"
-4. Wait for the analysis to complete
-5. View the AI-generated analysis in the popup
+3. Build the extension:
+   ```
+   npm run build
+   ```
 
-## Security
+4. For development with auto-rebuild:
+   ```
+   npm run dev
+   ```
 
-- API keys are stored securely in Chrome's local storage
-- No data is stored permanently
-- All communication with the API is done via HTTPS
-- Content script only accesses publicly visible page content
+### Loading the Extension in Chrome
 
-## Development
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable "Developer mode" in the top-right corner
+3. Click "Load unpacked" and select the `dist` directory from this project
+4. The extension icon should now appear in your browser toolbar
 
-### Project Structure
+## Project Structure
 
 ```
-├── manifest.json           # Extension configuration
-├── background.js          # Service worker for API communication
-├── content-script.js      # Page content capture
-├── popup.html            # Extension popup interface
-├── popup.js             # Popup functionality
-├── options.html         # Settings page
-└── options.js          # Settings functionality
+web-capture-assistant/
+├── src/
+│   ├── background/        # Background service worker
+│   ├── content/           # Content scripts
+│   ├── popup/             # Extension popup
+│   ├── options/           # Options page
+│   ├── history/           # Conversation history page
+│   ├── shared/            # Shared modules
+│   └── manifest.json      # Extension manifest
+├── dist/                  # Compiled extension output
+├── webpack.config.js      # Webpack configuration
+└── package.json           # NPM package definition
 ```
 
-### Building from Source
+## Configuration
 
-1. Make sure you have Node.js installed
-2. Clone the repository
-3. Install dependencies (if any)
-4. Load the extension in developer mode
+The extension requires an API endpoint that follows the OpenAI chat completions API format.
+
+1. Click the extension icon and select "Options"
+2. Enter your API endpoint and API key
+3. Configure agents with different personalities and settings
+
+## Using the Extension
+
+1. Click the extension icon while on any webpage
+2. Select "Analyze This Page" to get an AI analysis
+3. Or select "Open Chat Panel" to start a conversation
+4. Use the agent tabs in the panel to switch between different AI personas
 
 ## Contributing
 
+Contributions are welcome! Please feel free to submit a Pull Request.
+
 1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+2. Create your feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add some amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
-MIT License - feel free to use this code for any purpose.
-
-## Support
-
-For issues, questions, or contributions, please open an issue in the repository.
-
-## Privacy Policy
-
-This extension:
-- Only captures content from the active tab when explicitly requested
-- Does not store any captured content permanently
-- Only communicates with the configured API endpoint
-- Does not track user behavior or collect analytics 
+This project is licensed under the MIT License - see the LICENSE file for details.
