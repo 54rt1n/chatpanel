@@ -39,7 +39,7 @@ class AgentManager {
    */
   createDefaultAgent() {
     return {
-      id: 'agent_' + Date.now(),
+      id: 'agent_' + Math.floor(Date.now() / 1000),
       name: 'AI Assistant',
       systemMessage: 'You are a helpful assistant that analyzes webpage content.',
       model: 'deepseek-ai/DeepSeek-R1',
@@ -53,8 +53,8 @@ class AgentManager {
       repetitionPenalty: null,
       minP: null,
       stream: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now()
+      createdAt: Math.floor(Date.now() / 1000),
+      updatedAt: Math.floor(Date.now() / 1000)
     };
   }
 
@@ -62,7 +62,7 @@ class AgentManager {
    * Generate a unique conversation ID
    */
   generateConversationId() {
-    return 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    return 'conv_' + Math.floor(Date.now() / 1000) + '_' + Math.random().toString(36).substr(2, 9);
   }
 
   /**
@@ -107,12 +107,12 @@ class AgentManager {
    */
   async addAgent(config) {
     const newAgent = {
-      id: 'agent_' + Date.now(),
+      id: 'agent_' + Math.floor(Date.now() / 1000),
       currentConversationId: this.generateConversationId(),
       temperature: 0.7,
       stream: true,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAt: Math.floor(Date.now() / 1000),
+      updatedAt: Math.floor(Date.now() / 1000),
       ...config
     };
     
@@ -131,7 +131,7 @@ class AgentManager {
     this.agents[index] = { 
       ...this.agents[index], 
       ...updates, 
-      updatedAt: Date.now() 
+      updatedAt: Math.floor(Date.now() / 1000) 
     };
     
     await this.saveAgents();

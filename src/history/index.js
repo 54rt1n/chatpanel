@@ -13,11 +13,27 @@ document.addEventListener('DOMContentLoaded', async () => {
   const conversationItems = document.getElementById('conversationItems');
   const conversationDetail = document.getElementById('conversationDetail');
   const backButton = document.getElementById('backButton');
+  const modal = document.getElementById('confirmationModal');
   
   // State
   let conversations = [];
   let agents = [];
   let selectedConversationId = null;
+  let messageToSave = null;
+  let conversationIdToSave = null;
+  
+  // Modal handling functions
+  function showModal(message, conversationId) {
+    messageToSave = message;
+    conversationIdToSave = conversationId;
+    modal.classList.add('show');
+  }
+
+  function hideModal() {
+    modal.classList.remove('show');
+    messageToSave = null;
+    conversationIdToSave = null;
+  }
   
   // Initialize
   await initialize();
@@ -180,7 +196,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     // Format date
-    const date = new Date(conversation.timestamp);
+    const date = new Date(conversation.timestamp * 1000);
     const formattedDate = date.toLocaleDateString(undefined, { 
       month: 'short', 
       day: 'numeric',
@@ -270,102 +286,102 @@ document.addEventListener('DOMContentLoaded', async () => {
    * Render conversation detail
    */
   function renderConversationDetail(conversation, agentName, messages) {
-    // Format date
-    const date = new Date(conversation.timestamp);
-    const formattedDate = date.toLocaleString();
+    const detail = document.getElementById('conversationDetail');
+    detail.innerHTML = '';
     
     // Create header
     const header = document.createElement('div');
     header.className = 'conversation-detail-header';
-    header.innerHTML = `
-      <div>
-        <h2 class="detail-title">${escapeHtml(conversation.title)}</h2>
-        <div class="detail-meta">
-          <span class="detail-date">${formattedDate}</span>
-          <span class="detail-agent">${escapeHtml(agentName)}</span>
-          <span class="detail-id">ID: ${escapeHtml(conversation.id)}</span>
-        </div>
-      </div>
-      <div class="detail-actions">
-        <button class="action-btn rejoin" id="rejoinBtn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 8v4l3 3"/>
-            <path d="M3.05 11a9 9 0 1 1 .5 4"/>
-            <path d="M3 16V8h8"/>
-          </svg>
-          Rejoin Conversation
-        </button>
-        <button class="action-btn export" id="exportBtn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Export
-        </button>
-        <button class="action-btn delete" id="deleteBtn">
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="3 6 5 6 21 6"/>
-            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-            <line x1="10" y1="11" x2="10" y2="17"/>
-            <line x1="14" y1="11" x2="14" y2="17"/>
-          </svg>
-          Delete
-        </button>
+    
+    const title = document.createElement('div');
+    title.innerHTML = `
+      <h2 class="detail-title">${escapeHtml(conversation.title)}</h2>
+      <div class="detail-meta">
+        <span class="detail-agent">${escapeHtml(agentName || 'Unknown Agent')}</span>
+        <span class="detail-date">${new Date(conversation.timestamp * 1000).toLocaleString()}</span>
+        <span class="detail-id">${conversation.id}</span>
       </div>
     `;
+    
+    const actions = document.createElement('div');
+    actions.className = 'detail-actions';
+    actions.innerHTML = `
+      <button class="action-btn rejoin">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 12h18M3 12l6-6M3 12l6 6"/>
+        </svg>
+        Rejoin Conversation
+      </button>
+      <button class="action-btn export">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
+        </svg>
+        Export
+      </button>
+    `;
+    
+    header.appendChild(title);
+    header.appendChild(actions);
+    detail.appendChild(header);
     
     // Create messages container
     const messagesContainer = document.createElement('div');
     messagesContainer.className = 'conversation-messages';
     
-    // Render messages
-    if (messages.length === 0) {
-      messagesContainer.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">💬</div>
-          <div class="empty-message">No messages found</div>
+    messages.forEach(message => {
+      const messageElement = document.createElement('div');
+      messageElement.className = `message ${message.role} ${message.saved ? 'saved' : ''}`;
+      messageElement.setAttribute('data-timestamp', message.timestamp);
+      
+      messageElement.innerHTML = `
+        <div class="message-header">
+          <div class="message-info">
+            <span class="message-role">${message.role === 'user' ? 'You' : 'Assistant'}</span>
+            <span class="message-time">${new Date(message.timestamp * 1000).toLocaleString()}</span>
+          </div>
+          <div class="message-actions">
+            <button class="message-btn delete" title="Delete message">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>
+                <line x1="10" y1="11" x2="10" y2="17"/>
+                <line x1="14" y1="11" x2="14" y2="17"/>
+              </svg>
+            </button>
+            <button class="message-btn save" title="Save message">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+            </button>
+            <button class="message-btn saving" title="Saving message...">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+              </svg>
+            </button>
+            <button class="message-btn saved" title="Message saved">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M20 6L9 17l-5-5"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="message-content">${formatMessageContent(message.content)}</div>
+        <div class="message-meta">
+          ${message.url ? `<a href="${escapeHtml(message.url)}" class="message-url" target="_blank">${escapeHtml(message.title || message.url)}</a>` : ''}
+          ${message.model ? `<span class="message-model">${escapeHtml(message.model)}</span>` : ''}
         </div>
       `;
-    } else {
-      // Group messages into pairs (user + assistant)
-      for (let i = 0; i < messages.length; i++) {
-        const message = messages[i];
-        const messageElement = document.createElement('div');
-        messageElement.className = `message ${message.role}`;
-        
-        // Format date
-        const messageDate = new Date(message.timestamp);
-        const messageTime = messageDate.toLocaleTimeString(undefined, { 
-          hour: '2-digit', 
-          minute: '2-digit'
-        });
-        
-        messageElement.innerHTML = `
-          <div class="message-header">
-            <span class="message-role">${message.role === 'user' ? 'You' : agentName}</span>
-            <span class="message-time">${messageTime}</span>
-          </div>
-          <div class="message-content">${formatMessageContent(message.content)}</div>
-        `;
-        
-        messagesContainer.appendChild(messageElement);
-      }
-    }
+      
+      messagesContainer.appendChild(messageElement);
+    });
     
-    // Clear previous content
-    conversationDetail.innerHTML = '';
+    detail.appendChild(messagesContainer);
     
-    // Add header and messages
-    conversationDetail.appendChild(header);
-    conversationDetail.appendChild(messagesContainer);
+    // Set up event listeners for the new detail view
+    setupMessageEventListeners(detail);
     
-    // Add event listeners for action buttons
-    document.getElementById('rejoinBtn').addEventListener('click', () => rejoinConversation(conversation.id));
-    document.getElementById('exportBtn').addEventListener('click', () => exportConversation(conversation.id));
-    document.getElementById('deleteBtn').addEventListener('click', () => deleteConversation(conversation.id));
-    
-    // Scroll to bottom of messages
+    // Scroll to bottom
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
   }
   
@@ -501,40 +517,133 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
   
   /**
-   * Delete a conversation
+   * Save a message via API
    */
-  async function deleteConversation(conversationId) {
-    if (!confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+  async function saveMessage(message, conversationId) {
+    try {
+      console.log('Saving message:', {
+        timestamp: message.timestamp,
+        conversationId,
+        messageData: message
+      });
+
+      // Show saving state for all messages with the same timestamp
+      const messageElements = document.querySelectorAll('.message');
+      messageElements.forEach(element => {
+        const timestamp = element.getAttribute('data-timestamp');
+        if (timestamp === message.timestamp.toString()) {
+          element.classList.add('saving');
+          element.classList.remove('saved');
+        }
+      });
+
+      const response = await chrome.runtime.sendMessage({
+        action: 'SAVE_MESSAGE',
+        message: {
+          timestamp: message.timestamp,
+          role: message.role,
+          content: message.content,
+          url: message.url,
+          title: message.title,
+          model: message.model
+        },
+        conversationId
+      });
+
+      if (!response || !response.success) {
+        console.log('Failed to save message:', response);
+        // Remove saving state if failed
+        messageElements.forEach(element => {
+          const timestamp = element.getAttribute('data-timestamp');
+          if (timestamp === message.timestamp.toString()) {
+            element.classList.remove('saving');
+          }
+        });
+        throw new Error(response?.error || 'Failed to save message');
+      }
+
+      // Update UI to show saved state for both user and assistant messages with same timestamp
+      messageElements.forEach(element => {
+        const timestamp = element.getAttribute('data-timestamp');
+        if (timestamp === message.timestamp.toString()) {
+          element.classList.remove('saving');
+          element.classList.add('saved');
+        }
+      });
+
+      // Show success message
+      const status = document.createElement('div');
+      status.className = 'status success';
+      status.textContent = 'Message saved successfully';
+      document.querySelector('.conversation-detail').appendChild(status);
+      
+      // Remove status message after 3 seconds
+      setTimeout(() => {
+        status.remove();
+      }, 3000);
+
+    } catch (error) {
+      console.error('Error saving message:', error);
+      
+      // Show error message
+      const status = document.createElement('div');
+      status.className = 'status error';
+      status.textContent = `Error saving message: ${error.message}`;
+      document.querySelector('.conversation-detail').appendChild(status);
+      
+      // Remove error message after 5 seconds
+      setTimeout(() => {
+        status.remove();
+      }, 5000);
+    }
+  }
+  
+  /**
+   * Delete a message
+   */
+  async function deleteMessage(message, conversationId) {
+    if (!confirm('Are you sure you want to delete this message? This action cannot be undone.')) {
       return;
     }
     
     try {
       const response = await chrome.runtime.sendMessage({
-        action: 'DELETE_CONVERSATION',
+        action: 'DELETE_MESSAGE',
+        messageId: message.timestamp, // Use timestamp as message ID
         conversationId
       });
       
       if (!response.success) {
-        throw new Error(response.error || 'Failed to delete conversation');
+        throw new Error(response.error || 'Failed to delete message');
       }
       
-      // Remove from conversations array
-      conversations = conversations.filter(c => c.id !== conversationId);
+      // Show success message
+      const status = document.createElement('div');
+      status.className = 'status success';
+      status.textContent = 'Message deleted successfully';
+      document.body.appendChild(status);
+
+      // Remove status after 3 seconds
+      setTimeout(() => {
+        status.remove();
+      }, 3000);
       
-      // Update count
-      conversationCount.textContent = `${conversations.length} Conversation${conversations.length !== 1 ? 's' : ''}`;
-      
-      // Clear selection
-      selectedConversationId = null;
-      
-      // Re-render conversation list
-      renderConversationList();
-      
-      // Show empty detail
-      showEmptyDetail();
+      // Reload both conversation list and detail
+      await loadConversations(); // Refresh the conversation list
+      await loadConversationDetail(conversationId); // Refresh the conversation detail
     } catch (error) {
-      console.error('Error deleting conversation:', error);
-      alert('Error deleting conversation: ' + error.message);
+      console.error('Error deleting message:', error);
+      
+      // Show error message
+      const status = document.createElement('div');
+      status.className = 'status error';
+      status.textContent = `Error deleting message: ${error.message}`;
+      document.body.appendChild(status);
+
+      // Remove status after 3 seconds
+      setTimeout(() => {
+        status.remove();
+      }, 3000);
     }
   }
   
@@ -557,6 +666,90 @@ document.addEventListener('DOMContentLoaded', async () => {
     backButton.addEventListener('click', () => {
       chrome.runtime.openOptionsPage();
     });
+
+    // Modal event listeners
+    modal.querySelector('.modal-btn.cancel').addEventListener('click', hideModal);
+    modal.querySelector('.modal-btn.confirm').addEventListener('click', async () => {
+      if (messageToSave && conversationIdToSave) {
+        await saveMessage(messageToSave, conversationIdToSave);
+      }
+      hideModal();
+    });
+  }
+  
+  /**
+   * Set up message action event listeners
+   */
+  function setupMessageEventListeners(conversationDetail) {
+    // Remove existing event listeners by cloning and replacing the element
+    const newDetail = conversationDetail.cloneNode(true);
+    conversationDetail.parentNode.replaceChild(newDetail, conversationDetail);
+
+    // Save and re-save button click handler
+    newDetail.addEventListener('click', async (e) => {
+      const saveBtn = e.target.closest('.message-btn.save');
+      const savedBtn = e.target.closest('.message-btn.saved');
+      
+      if (saveBtn || savedBtn) {
+        const messageEl = (saveBtn || savedBtn).closest('.message');
+        if (messageEl) {
+          const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
+          const conversationId = selectedConversationId;
+          
+          // Get message data
+          const message = {
+            timestamp,
+            role: messageEl.classList.contains('user') ? 'user' : 'assistant',
+            content: messageEl.querySelector('.message-content').textContent,
+            url: messageEl.querySelector('.message-url')?.href,
+            title: messageEl.querySelector('.message-url')?.textContent,
+            model: messageEl.querySelector('.message-model')?.textContent
+          };
+
+          if (savedBtn) {
+            // Show confirmation modal for re-saving
+            showModal(message, conversationId);
+          } else {
+            // Normal save for unsaved message
+            await saveMessage(message, conversationId);
+          }
+        }
+      }
+    });
+
+    // Delete button click handler
+    newDetail.addEventListener('click', async (e) => {
+      const deleteBtn = e.target.closest('.message-btn.delete');
+      if (deleteBtn) {
+        const messageEl = deleteBtn.closest('.message');
+        if (messageEl) {
+          const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
+          const message = {
+            timestamp,
+            role: messageEl.classList.contains('user') ? 'user' : 'assistant'
+          };
+          await deleteMessage(message, selectedConversationId);
+        }
+      }
+    });
+
+    // Rejoin conversation button click handler
+    newDetail.addEventListener('click', async (e) => {
+      const rejoinBtn = e.target.closest('.action-btn.rejoin');
+      if (rejoinBtn && selectedConversationId) {
+        await rejoinConversation(selectedConversationId);
+      }
+    });
+
+    // Export conversation button click handler
+    newDetail.addEventListener('click', async (e) => {
+      const exportBtn = e.target.closest('.action-btn.export');
+      if (exportBtn && selectedConversationId) {
+        await exportConversation(selectedConversationId);
+      }
+    });
+
+    return newDetail;
   }
   
   /**

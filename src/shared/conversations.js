@@ -5,8 +5,9 @@
  */
 
 class ConversationManager {
-  constructor(storageManager) {
+  constructor(storageManager, apiClient) {
     this.storage = storageManager;
+    this.api = apiClient;
     this.initialized = false;
     this.conversationCache = new Map();
   }
@@ -39,7 +40,11 @@ class ConversationManager {
         const messages = [{
           role: 'user',
           content: msg.message,
-          timestamp: msg.timestamp
+          timestamp: parseInt(msg.timestamp, 10), // Ensure timestamp is a number
+          url: msg.url,
+          title: msg.title,
+          model: msg.model,
+          saved: msg.saved || false
         }];
         
         // Only add assistant message if there was a response
@@ -47,7 +52,11 @@ class ConversationManager {
           messages.push({
             role: 'assistant',
             content: msg.response,
-            timestamp: msg.timestamp + 1 // Ensure assistant message comes after user message
+            timestamp: parseInt(msg.timestamp, 10), // Ensure timestamp is a number
+            url: msg.url,
+            title: msg.title,
+            model: msg.model,
+            saved: msg.saved || false
           });
         }
         
@@ -86,7 +95,7 @@ class ConversationManager {
         id: conversationId,
         agentId,
         title: firstMessage.title || 'Untitled Conversation',
-        url: firstMessage.url,
+        url: firstMessage.url || '',
         timestamp: firstMessage.timestamp,
         messageCount: messages.length,
         firstMessage: firstMessage.message,
@@ -101,8 +110,8 @@ class ConversationManager {
   /**
    * Store a message and its response in history
    */
-  async storeMessage(message, response, url, title, conversationId, agentId) {
-    const timestamp = Date.now();
+  async storeMessage(message, response, url, title, conversationId, agentId, model) {
+    const timestamp = Math.floor(Date.now() / 1000);
     const historyEntry = {
       timestamp,
       url,
@@ -110,7 +119,9 @@ class ConversationManager {
       message,
       response,
       conversationId,
-      agentId
+      agentId,
+      model,
+      saved: false // Initialize as not saved
     };
     
     try {
@@ -135,6 +146,69 @@ class ConversationManager {
       return historyEntry;
     } catch (error) {
       console.error('Error storing message history:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Mark a message as saved
+   */
+  async markMessageAsSaved(messageId, conversationId) {
+    try {
+      console.log('Marking message as saved:', {
+        messageId,
+        conversationId
+      });
+
+      const data = await this.storage.get('messageHistory', []);
+      const messageHistory = data.messageHistory || [];
+      
+      // Find the message index
+      const messageIndex = messageHistory.findIndex(msg => {
+        const timestampMatch = parseInt(msg.timestamp, 10) === parseInt(messageId, 10);
+        const conversationMatch = msg.conversationId === conversationId;
+        console.log('Checking message:', {
+          msgTimestamp: msg.timestamp,
+          msgConversationId: msg.conversationId,
+          timestampMatch,
+          conversationMatch
+        });
+        return timestampMatch && conversationMatch;
+      });
+      
+      if (messageIndex === -1) {
+        console.error('Message not found in history:', {
+          messageId,
+          conversationId,
+          historyLength: messageHistory.length,
+          timestamps: messageHistory.map(m => m.timestamp),
+          conversations: messageHistory.map(m => m.conversationId)
+        });
+        throw new Error('Message not found');
+      }
+      
+      // Update the message
+      const updatedHistory = [
+        ...messageHistory.slice(0, messageIndex),
+        { ...messageHistory[messageIndex], saved: true },
+        ...messageHistory.slice(messageIndex + 1)
+      ];
+      
+      // Store updated history
+      await this.storage.set('messageHistory', updatedHistory);
+      
+      // Update last message if needed
+      if (messageHistory[messageHistory.length - 1].timestamp === messageId) {
+        await this.storage.set('lastMessage', updatedHistory[updatedHistory.length - 1]);
+      }
+      
+      // Invalidate cache for this conversation
+      this.conversationCache.delete(conversationId);
+      
+      console.log('Successfully marked message as saved');
+      return true;
+    } catch (error) {
+      console.error('Error marking message as saved:', error);
       throw error;
     }
   }
@@ -178,7 +252,7 @@ async exportConversation(conversationId) {
     const data = await this.storage.get('messageHistory', []);
     const messageHistory = data.messageHistory || [];
     
-    // Find first message for title information
+    // Find first message for metadata
     const firstHistoryEntry = messageHistory.find(msg => msg.conversationId === conversationId);
     
     // Get agent information
@@ -192,12 +266,9 @@ async exportConversation(conversationId) {
     
     const exportData = {
       id: conversationId,
-      title: firstHistoryEntry?.title || 'Exported Conversation',
-      url: firstHistoryEntry?.url || '',
       timestamp: firstHistoryEntry?.timestamp || Date.now(),
       agentId: firstHistoryEntry?.agentId || '',
-      agentName: agentInfo?.name || 'Unknown Agent', // Include agent name
-      model: agentInfo?.model || 'Unknown Model', // Include agent model
+      agentName: agentInfo?.name || 'Unknown Agent',
       messages: messages
     };
     
@@ -217,7 +288,7 @@ async importConversation(exportData, newAgentId = null) {
     const messageHistory = data.messageHistory || [];
     
     // Generate a new conversation ID
-    const newConversationId = 'conv_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    const newConversationId = 'conv_' + Math.floor(Date.now() / 1000) + '_' + Math.random().toString(36).substr(2, 9);
     
     // If no agent ID was provided but we have an agent name, try to find the agent
     if (!newAgentId && exportData.agentName) {
@@ -239,9 +310,10 @@ async importConversation(exportData, newAgentId = null) {
       
       if (userMessage && userMessage.role === 'user') {
         newEntries.push({
-          timestamp: userMessage.timestamp || Date.now() + i,
-          url: exportData.url || '',
-          title: exportData.title || 'Imported Conversation',
+          timestamp: userMessage.timestamp || Math.floor(Date.now() / 1000) + i,
+          url: userMessage.url || '',
+          title: userMessage.title || 'Imported Message',
+          model: userMessage.model || 'unknown',
           message: userMessage.content,
           response: assistantMessage?.content || '',
           conversationId: newConversationId,
@@ -289,7 +361,7 @@ async importConversation(exportData, newAgentId = null) {
         id: conversationId,
         agentId: firstMessage.agentId,
         title: firstMessage.title || 'Untitled Conversation',
-        url: firstMessage.url,
+        url: firstMessage.url || '',
         timestamp: firstMessage.timestamp,
         messageCount: messages.length,
         lastUpdate: messages.reduce((latest, msg) => 
@@ -300,6 +372,95 @@ async importConversation(exportData, newAgentId = null) {
     
     // Sort by timestamp (newest first)
     return conversations.sort((a, b) => b.lastUpdate - a.lastUpdate);
+  }
+
+  /**
+   * Delete a specific message from a conversation
+   */
+  async deleteMessage(messageId, conversationId) {
+    try {
+      const data = await this.storage.get('messageHistory', []);
+      const messageHistory = data.messageHistory || [];
+      
+      // Find the message index
+      const messageIndex = messageHistory.findIndex(msg => 
+        msg.timestamp === messageId && msg.conversationId === conversationId
+      );
+      
+      if (messageIndex === -1) {
+        throw new Error('Message not found');
+      }
+      
+      // Remove the message
+      const updatedHistory = [
+        ...messageHistory.slice(0, messageIndex),
+        ...messageHistory.slice(messageIndex + 1)
+      ];
+      
+      // Store updated history
+      await this.storage.set('messageHistory', updatedHistory);
+      
+      // Update last message if needed
+      if (messageHistory[messageHistory.length - 1].timestamp === messageId) {
+        await this.storage.set('lastMessage', updatedHistory[updatedHistory.length - 1] || null);
+      }
+      
+      // Invalidate cache for this conversation
+      this.conversationCache.delete(conversationId);
+      
+      return true;
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Save a message to the external API
+   */
+  async saveMessage(message, conversationId) {
+    try {
+      if (!this.api) {
+        throw new Error('API client not initialized');
+      }
+
+      const messageTimestamp = parseInt(message.timestamp, 10);
+      
+      console.log('Saving message to API:', {
+        messageTimestamp,
+        conversationId,
+        messageData: message
+      });
+
+      // Get all messages for this conversation
+      const allMessages = await this.getConversationMessages(conversationId);
+      
+      // Find only the user and assistant messages with the matching timestamp
+      const messagesToSave = allMessages.filter(msg => 
+        parseInt(msg.timestamp, 10) === messageTimestamp
+      );
+
+      if (messagesToSave.length === 0) {
+        throw new Error('Message pair not found');
+      }
+      
+      // Save only these messages
+      const result = await this.api.saveConversation(conversationId, messagesToSave);
+      
+      // Check if the API call was successful
+      if (result.status === 'success') {
+        console.log('API save successful, marking message as saved');
+        
+        // Mark this message as saved
+        await this.markMessageAsSaved(messageTimestamp, conversationId);
+        return { success: true, data: result };
+      } else {
+        throw new Error(result.message || 'Failed to save conversation');
+      }
+    } catch (error) {
+      console.error('Error saving message:', error);
+      return { success: false, error: error.message };
+    }
   }
 }
 

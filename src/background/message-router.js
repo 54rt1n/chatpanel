@@ -74,6 +74,12 @@ class MessageRouter {
       case 'IMPORT_CONVERSATION':
         return this.handleImportConversation(request, sender, sendResponse);
         
+      case 'DELETE_MESSAGE':
+        return this.handleDeleteMessage(request, sender, sendResponse);
+        
+      case 'SAVE_MESSAGE':
+        return this.handleSaveMessage(request, sender, sendResponse);
+        
       default:
         console.warn('Unknown message action:', request.action);
         sendResponse({ success: false, error: 'Unknown action' });
@@ -82,34 +88,34 @@ class MessageRouter {
   }
   
   /**
- * Handle panel join request
- */
-handleJoinPanel(request, sender, sendResponse) {
-  const tabId = sender.tab?.id;
-  if (tabId) {
-    this.activePanelTabs.add(tabId);
-    
-    // Add to agent stream tabs
-    const agentId = request.agentId || this.agents.getActiveAgent().id;
-    this.streamHandler.addTabToAgentStream(agentId, tabId);
-    
-    // Send agent tabs to this panel - Using try/catch to handle potential errors
-    try {
-      // Send message but don't wait for it before sending response
-      chrome.tabs.sendMessage(tabId, {
-        action: 'UPDATE_AGENT_TABS',
-        agents: this.agents.getAllAgents(),
-        activeAgentId: agentId
-      }).catch(err => console.error('Error updating agent tabs:', err));
-    } catch (error) {
-      console.error('Error sending UPDATE_AGENT_TABS message:', error);
+   * Handle panel join request
+   */
+  handleJoinPanel(request, sender, sendResponse) {
+    const tabId = sender.tab?.id;
+    if (tabId) {
+      this.activePanelTabs.add(tabId);
+      
+      // Add to agent stream tabs
+      const agentId = request.agentId || this.agents.getActiveAgent().id;
+      this.streamHandler.addTabToAgentStream(agentId, tabId);
+      
+      // Send agent tabs to this panel - Using try/catch to handle potential errors
+      try {
+        // Send message but don't wait for it before sending response
+        chrome.tabs.sendMessage(tabId, {
+          action: 'UPDATE_AGENT_TABS',
+          agents: this.agents.getAllAgents(),
+          activeAgentId: agentId
+        }).catch(err => console.error('Error updating agent tabs:', err));
+      } catch (error) {
+        console.error('Error sending UPDATE_AGENT_TABS message:', error);
+      }
     }
+    
+    // Send response synchronously
+    sendResponse({ success: true });
+    return false; // Changed to false since we're handling synchronously
   }
-  
-  // Send response synchronously
-  sendResponse({ success: true });
-  return false; // Changed to false since we're handling synchronously
-}
 
   /**
    * Handle panel leave request
@@ -555,6 +561,45 @@ handleJoinPanel(request, sender, sendResponse) {
     }
     
     return true;
+  }
+  
+  /**
+   * Handle message deletion request
+   */
+  async handleDeleteMessage(request, sender, sendResponse) {
+    try {
+      const { messageId, conversationId } = request;
+      
+      // Delete the message
+      await this.conversations.deleteMessage(messageId, conversationId);
+      
+      sendResponse({ success: true });
+    } catch (error) {
+      console.error('Error deleting message:', error);
+      sendResponse({ success: false, error: error.message });
+    }
+    
+    return true;
+  }
+  
+  /**
+   * Handle message save request
+   */
+  handleSaveMessage(request, sender, sendResponse) {
+    const { message, conversationId } = request;
+    
+    // Save the message and properly chain the Promise
+    this.conversations.saveMessage(message, conversationId)
+      .then(result => {
+        console.log('Save message result:', result);
+        sendResponse({ success: true, result });
+      })
+      .catch(error => {
+        console.error('Error saving message:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    
+    return true; // Keep the sendResponse channel open
   }
 }
 

@@ -17,24 +17,24 @@ console.log('Background script loaded and running');
 // Main application class
 class BackgroundApp {
     constructor() {
-  // Initialize managers
-  this.storage = new StorageManager();
-  this.agents = new AgentManager(this.storage);
-  this.conversations = new ConversationManager(this.storage);
-  this.api = new ApiClient(this.storage, this.agents);  // Pass agents manager
-  this.streamHandler = new StreamHandler(this.agents);
-  
-  // Initialize message router
-  this.messageRouter = new MessageRouter(
-    this.agents,
-    this.conversations,
-    this.api,
-    this.streamHandler
-  );
-  
-  // State tracking
-  this.activePanelTabs = new Set();
-}
+      // Initialize managers
+      this.storage = new StorageManager();
+      this.agents = new AgentManager(this.storage);
+      this.api = new ApiClient(this.storage, this.agents);  // Initialize API client first
+      this.conversations = new ConversationManager(this.storage, this.api); // Pass API client
+      this.streamHandler = new StreamHandler(this.agents);
+      
+      // Initialize message router
+      this.messageRouter = new MessageRouter(
+        this.agents,
+        this.conversations,
+        this.api,
+        this.streamHandler
+      );
+      
+      // State tracking
+      this.activePanelTabs = new Set();
+    }
   
   async initialize() {
     try {

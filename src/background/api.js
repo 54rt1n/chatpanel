@@ -327,7 +327,8 @@ async sendChatMessage(
       url, 
       title, 
       conversationId, 
-      agentId
+      agentId,
+      agent.model // Add model parameter
     );
     
     return { success: true };

@@ -267,7 +267,13 @@
     .message-header {
       display: flex;
       align-items: center;
+      justify-content: space-between;
       margin-bottom: 4px;
+    }
+
+    .message-info {
+      display: flex;
+      align-items: center;
     }
 
     .message-role {
@@ -276,12 +282,50 @@
     }
 
     .message-time {
-      font-size: 12px;
       color: #999;
+      font-size: 12px;
+    }
+
+    .message-actions {
+      display: flex;
+      gap: 4px;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .message:hover .message-actions {
+      opacity: 1;
+    }
+
+    .message-btn {
+      background: none;
+      border: none;
+      padding: 2px;
+      cursor: pointer;
+      color: #666;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background-color 0.2s, color 0.2s;
+    }
+
+    .message-btn:hover {
+      background-color: #f0f0f0;
+    }
+
+    .message-btn.delete:hover {
+      background-color: #ffebee;
+      color: #f44336;
+    }
+
+    .message-btn.save:hover {
+      background-color: #e8f5e9;
+      color: #4CAF50;
     }
 
     .message-content {
-      padding: 12px 16px;
+      padding: 12px;
       border-radius: 8px;
       max-width: 85%;
     }
@@ -306,6 +350,28 @@
 
     .message-content p:last-child {
       margin: 0;
+    }
+
+    .message-meta {
+      font-size: 12px;
+      color: #999;
+      margin-top: 4px;
+    }
+
+    .message-url {
+      color: #2196F3;
+      text-decoration: none;
+    }
+
+    .message-url:hover {
+      text-decoration: underline;
+    }
+
+    .message-model {
+      background-color: #f1f1f1;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
     }
 
     .empty-state {
@@ -353,6 +419,155 @@
       background-color: #f2dede;
       color: #a94442;
       border: 1px solid #ebccd1;
+    }
+
+    .message-btn.saved {
+      background: none;
+      border: none;
+      padding: 2px;
+      color: #4CAF50;
+      border-radius: 4px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+
+    .message-btn.saved:hover {
+      background-color: #e8f5e9;
+      color: #4CAF50;
+    }
+
+    .message-btn.saved:hover svg {
+      position: relative;
+    }
+
+    .message-btn.saved:hover svg::after {
+      content: '+';
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      font-size: 12px;
+      font-weight: bold;
+    }
+
+    .message-btn.save {
+      display: flex;
+    }
+
+    .message-btn.saving {
+      background: none;
+      border: none;
+      padding: 2px;
+      color: #666;
+      border-radius: 4px;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    /* Show/hide buttons based on message state */
+    .message:not(.saved) .message-btn.save {
+      display: flex;
+    }
+
+    .message:not(.saved) .message-btn.saved {
+      display: none;
+    }
+
+    .message.saving .message-btn.save {
+      display: none;
+    }
+
+    .message.saving .message-btn.saving {
+      display: flex;
+    }
+
+    .message.saved .message-btn.save,
+    .message.saved .message-btn.saving {
+      display: none;
+    }
+
+    .message.saved .message-btn.saved {
+      display: flex;
+    }
+
+    /* Modal styles */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.show {
+      display: flex;
+    }
+
+    .modal {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      max-width: 400px;
+      width: 90%;
+    }
+
+    .modal-title {
+      font-size: 18px;
+      font-weight: bold;
+      margin-bottom: 16px;
+      color: #333;
+    }
+
+    .modal-content {
+      margin-bottom: 24px;
+      color: #666;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+    }
+
+    .modal-btn {
+      padding: 8px 16px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      transition: background-color 0.2s;
+    }
+
+    .modal-btn.cancel {
+      background: #f5f5f5;
+      color: #666;
+    }
+
+    .modal-btn.cancel:hover {
+      background: #e0e0e0;
+    }
+
+    .modal-btn.confirm {
+      background: #4CAF50;
+      color: white;
+    }
+
+    .modal-btn.confirm:hover {
+      background: #43A047;
     }
 
     @media (max-width: 768px) {
@@ -423,6 +638,20 @@
         <div class="empty-icon">💬</div>
         <div class="empty-message">Select a conversation</div>
         <div class="empty-detail">Choose a conversation from the list to view its messages</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Confirmation Modal -->
+  <div id="confirmationModal" class="modal-overlay">
+    <div class="modal">
+      <div class="modal-title">Re-save Message</div>
+      <div class="modal-content">
+        This message has already been saved. Would you like to save it again?
+      </div>
+      <div class="modal-actions">
+        <button class="modal-btn cancel">Cancel</button>
+        <button class="modal-btn confirm">Save Again</button>
       </div>
     </div>
   </div>
