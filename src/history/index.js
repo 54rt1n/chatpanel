@@ -681,75 +681,90 @@ document.addEventListener('DOMContentLoaded', async () => {
    * Set up message action event listeners
    */
   function setupMessageEventListeners(conversationDetail) {
-    // Remove existing event listeners by cloning and replacing the element
-    const newDetail = conversationDetail.cloneNode(true);
-    conversationDetail.parentNode.replaceChild(newDetail, conversationDetail);
+    // Store handler functions so we can remove them properly
+    const handlers = {
+      messageAction: function(e) {
+        const saveBtn = e.target.closest('.message-btn.save');
+        const savedBtn = e.target.closest('.message-btn.saved');
+        
+        if (saveBtn || savedBtn) {
+          const messageEl = (saveBtn || savedBtn).closest('.message');
+          if (messageEl) {
+            const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
+            const conversationId = selectedConversationId;
+            
+            // Get message data
+            const message = {
+              timestamp,
+              role: messageEl.classList.contains('user') ? 'user' : 'assistant',
+              content: messageEl.querySelector('.message-content').textContent,
+              url: messageEl.querySelector('.message-url')?.href,
+              title: messageEl.querySelector('.message-url')?.textContent,
+              model: messageEl.querySelector('.message-model')?.textContent
+            };
 
-    // Save and re-save button click handler
-    newDetail.addEventListener('click', async (e) => {
-      const saveBtn = e.target.closest('.message-btn.save');
-      const savedBtn = e.target.closest('.message-btn.saved');
-      
-      if (saveBtn || savedBtn) {
-        const messageEl = (saveBtn || savedBtn).closest('.message');
-        if (messageEl) {
-          const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
-          const conversationId = selectedConversationId;
-          
-          // Get message data
-          const message = {
-            timestamp,
-            role: messageEl.classList.contains('user') ? 'user' : 'assistant',
-            content: messageEl.querySelector('.message-content').textContent,
-            url: messageEl.querySelector('.message-url')?.href,
-            title: messageEl.querySelector('.message-url')?.textContent,
-            model: messageEl.querySelector('.message-model')?.textContent
-          };
-
-          if (savedBtn) {
-            // Show confirmation modal for re-saving
-            showModal(message, conversationId);
-          } else {
-            // Normal save for unsaved message
-            await saveMessage(message, conversationId);
+            if (savedBtn) {
+              // Show confirmation modal for re-saving
+              showModal(message, conversationId);
+            } else {
+              // Normal save for unsaved message
+              saveMessage(message, conversationId);
+            }
           }
         }
-      }
-    });
-
-    // Delete button click handler
-    newDetail.addEventListener('click', async (e) => {
-      const deleteBtn = e.target.closest('.message-btn.delete');
-      if (deleteBtn) {
-        const messageEl = deleteBtn.closest('.message');
-        if (messageEl) {
-          const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
-          const message = {
-            timestamp,
-            role: messageEl.classList.contains('user') ? 'user' : 'assistant'
-          };
-          await deleteMessage(message, selectedConversationId);
+      },
+      
+      deleteAction: function(e) {
+        const deleteBtn = e.target.closest('.message-btn.delete');
+        if (deleteBtn) {
+          const messageEl = deleteBtn.closest('.message');
+          if (messageEl) {
+            const timestamp = parseInt(messageEl.getAttribute('data-timestamp'), 10);
+            const message = {
+              timestamp,
+              role: messageEl.classList.contains('user') ? 'user' : 'assistant'
+            };
+            deleteMessage(message, selectedConversationId);
+          }
+        }
+      },
+      
+      rejoinAction: function(e) {
+        const rejoinBtn = e.target.closest('.action-btn.rejoin');
+        if (rejoinBtn && selectedConversationId) {
+          rejoinConversation(selectedConversationId);
+        }
+      },
+      
+      exportAction: function(e) {
+        const exportBtn = e.target.closest('.action-btn.export');
+        if (exportBtn && selectedConversationId) {
+          exportConversation(selectedConversationId);
         }
       }
-    });
-
-    // Rejoin conversation button click handler
-    newDetail.addEventListener('click', async (e) => {
-      const rejoinBtn = e.target.closest('.action-btn.rejoin');
-      if (rejoinBtn && selectedConversationId) {
-        await rejoinConversation(selectedConversationId);
+    };
+    
+    // First, remove any existing event listeners from the old detail view
+    if (conversationDetail._eventHandlers) {
+      for (const [eventType, handler] of Object.entries(conversationDetail._eventHandlers)) {
+        conversationDetail.removeEventListener(eventType, handler);
       }
-    });
-
-    // Export conversation button click handler
-    newDetail.addEventListener('click', async (e) => {
-      const exportBtn = e.target.closest('.action-btn.export');
-      if (exportBtn && selectedConversationId) {
-        await exportConversation(selectedConversationId);
+    }
+    
+    // Store handlers on the element to be able to remove them later
+    conversationDetail._eventHandlers = {
+      click: function(e) {
+        handlers.messageAction(e);
+        handlers.deleteAction(e);
+        handlers.rejoinAction(e);
+        handlers.exportAction(e);
       }
-    });
+    };
+    
+    // Add consolidated click handler
+    conversationDetail.addEventListener('click', conversationDetail._eventHandlers.click);
 
-    return newDetail;
+    return conversationDetail;
   }
   
   /**

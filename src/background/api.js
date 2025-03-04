@@ -2,6 +2,7 @@
  * API Client
  * 
  * Handles communication with the LLM API endpoints
+ * Enhanced with better error handling and recovery mechanisms
  */
 
 class ApiClient {
@@ -12,6 +13,9 @@ class ApiClient {
     this.apiKey = null;
     this.userId = null;
     this.initialized = false;
+    this.maxRetries = 3;
+    this.lastAPIError = null;
+    this.lastAPIErrorTime = 0;
   }
   
   /**
@@ -53,9 +57,51 @@ class ApiClient {
   }
   
   /**
-   * Make an API request
+   * Check if the backend API is available
+   * @param {number} timeout - Maximum time to wait for response in ms
+   * @returns {Promise<boolean>} - True if backend is available
    */
-  async fetch(path, options = {}) {
+  async isBackendAvailable(timeout = 5000) {
+    // If we had a recent error, avoid hammering the server
+    const now = Date.now();
+    if (this.lastAPIError && now - this.lastAPIErrorTime < 10000) {
+      console.log('Recent backend error, skipping availability check');
+      return false;
+    }
+    
+    try {
+      await this.ensureInitialized();
+      
+      // Create a controller to abort the request if it takes too long
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      
+      // Try a lightweight HEAD request first
+      const response = await fetch(this.apiEndpoint, {
+        method: 'HEAD',
+        signal: controller.signal,
+        headers: {
+          'Authorization': `Bearer ${this.apiKey}`
+        }
+      });
+      
+      clearTimeout(timeoutId);
+      return response.ok;
+    } catch (error) {
+      console.warn('Backend availability check failed:', error.message);
+      
+      // Update error state
+      this.lastAPIError = error;
+      this.lastAPIErrorTime = Date.now();
+      
+      return false;
+    }
+  }
+  
+  /**
+   * Make an API request with better error handling
+   */
+  async fetch(path, options = {}, retryCount = 0) {
     await this.ensureInitialized();
     
     // Ensure path starts with slash
@@ -78,21 +124,74 @@ class ApiClient {
     try {
       const response = await fetch(url, requestOptions);
       
-     if (!response.ok) {
+      // Clear error state on successful response
+      if (response.ok) {
+        this.lastAPIError = null;
+        this.lastAPIErrorTime = 0;
+      }
+      
+      if (!response.ok) {
         const errorText = await response.text().catch(() => 'Unknown error');
         console.error('API request failed:', {
             status: response.status,
             statusText: response.statusText,
             url,
-            requestOptions,
             errorText
         });
-        throw new Error(`API request failed: ${response.status} ${response.statusText} - ${errorText}`);
+        
+        // For streaming requests, we don't want to retry as it complicates the stream handling
+        if (options.body && options.body.includes('"stream":true')) {
+          throw new Error(`API request failed: ${response.status} ${response.statusText}`);
+        }
+        
+        // Only retry server errors and only when not streaming
+        if (response.status >= 500 && retryCount < this.maxRetries) {
+          console.log(`Server error (${response.status}), retrying...`);
+          // Simple linear backoff
+          const delay = 1000 * (retryCount + 1);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return this.fetch(path, options, retryCount + 1);
+        }
+        
+        // Update error state
+        this.lastAPIError = new Error(`API request failed: ${response.status} ${response.statusText}`);
+        this.lastAPIErrorTime = Date.now();
+        
+        throw this.lastAPIError;
       } 
 
       return response;
     } catch (error) {
-      console.error('API request failed:', error);
+      // If it's a network error and we're not streaming, we can retry
+      const isNetworkError = error.name === 'TypeError' || 
+                             error.message.includes('Failed to fetch') || 
+                             error.message.includes('Network request failed') ||
+                             error.name === 'AbortError';
+      
+      // Don't retry for streaming requests
+      const isStreaming = options.body && options.body.includes('"stream":true');
+      
+      if (isNetworkError && !isStreaming && retryCount < this.maxRetries) {
+        console.log(`Network error: ${error.message}, retrying (${retryCount + 1}/${this.maxRetries})...`);
+        
+        // Simple linear backoff
+        const delay = 1000 * (retryCount + 1);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        
+        return this.fetch(path, options, retryCount + 1);
+      }
+      
+      // Update error state
+      this.lastAPIError = error;
+      this.lastAPIErrorTime = Date.now();
+      
+      console.error('API request failed after retries:', error);
+      
+      // Enhance the error message for network errors
+      if (isNetworkError) {
+        throw new Error('Unable to reach the API server. Please check your connection and the API endpoint configuration.');
+      }
+      
       throw error;
     }
   }
@@ -115,6 +214,9 @@ class ApiClient {
       chrome.tabs.sendMessage(tabId, { 
         action: 'SHOW_LOADING',
         agentId: agent.id
+      }).catch(err => {
+        console.warn('Warning: Could not show loading state:', err.message);
+        // Continue execution despite this error
       });
       
       const messages = [{
@@ -165,19 +267,33 @@ class ApiClient {
     } catch (error) {
       console.error('Error analyzing webpage:', error);
       
-      // Notify the tab about the error
-      chrome.tabs.sendMessage(tabId, {
-        action: 'SHOW_ERROR',
-        error: error.message,
-        agentId: agent.id
-      });
+      // Format a more user-friendly error message
+      let errorMessage = error.message;
+      if (error.message.includes('Failed to fetch') || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('Unable to reach')) {
+        errorMessage = 'Unable to reach the API server. Please check your connection and API configuration.';
+      }
       
-      return { success: false, error: error.message };
+      // Notify the tab about the error with error handling
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'SHOW_ERROR',
+          error: errorMessage,
+          agentId: agent.id
+        }).catch(() => {
+          console.warn('Failed to send error message to tab');
+        });
+      } catch (e) {
+        console.warn('Error sending error message to tab:', e);
+      }
+      
+      return { success: false, error: errorMessage };
     }
   }
   
 /**
- * Send a chat message
+ * Send a chat message or analyze a webpage
  */
 async sendChatMessage(
   message, 
@@ -207,7 +323,7 @@ async sendChatMessage(
       throw new Error('Tab no longer exists or is not accessible');
     }
     
-    // Notify the tab to show loading state - with error handling
+    // Notify the tab to show loading state - with enhanced error handling
     try {
       await chrome.tabs.sendMessage(tabId, { 
         action: 'SHOW_LOADING',
@@ -222,14 +338,23 @@ async sendChatMessage(
     }
     
     // Get previous messages in this conversation
-    const conversationMessages = await conversationManager.getConversationMessages(conversationId);
+    let conversationMessages = [];
+    try {
+      conversationMessages = await conversationManager?.getConversationMessages(conversationId) || [];
+    } catch (error) {
+      console.warn('Failed to get conversation messages, starting new conversation:', error);
+      // Continue with empty history
+    }
+    
+    // If no explicit message is provided, create an analysis message
+    const userMessage = message || `Please analyze this webpage:\nURL: ${url}\nTitle: ${title}\nContent: ${pageContent}`;
     
     // Add current message
     const messages = [
       ...conversationMessages,
       {
         role: 'user',
-        content: message,
+        content: userMessage,
         timestamp: Date.now()
       }
     ];
@@ -245,43 +370,66 @@ async sendChatMessage(
         thought_content: null,
         conversation_id: conversationId
       },
-      model: agent.model,  // Direct property access instead of agent.data.model
+      model: agent.model,
       temperature: agent.temperature,
       stream: agent.stream,
       system_message: agent.systemMessage,
-      max_tokens: 4096,
-      top_p: undefined,
-      top_k: undefined,
-      presence_penalty: undefined,
-      frequency_penalty: undefined,
-      repetition_penalty: undefined,
-      min_p: undefined
+      max_tokens: 4096
     };
     
     // Add optional parameters from agent config
     if (agent.maxTokens) requestBody.max_tokens = agent.maxTokens;
-    if (agent.topP) requestBody.top_p = agent.topP;
-    if (agent.topK) requestBody.top_k = agent.topK;
-    if (agent.presencePenalty) requestBody.presence_penalty = agent.presencePenalty;
-    if (agent.frequencyPenalty) requestBody.frequency_penalty = agent.frequencyPenalty;
-    if (agent.repetitionPenalty) requestBody.repetition_penalty = agent.repetitionPenalty;
-    if (agent.minP) requestBody.min_p = agent.minP;
+    if (agent.topP !== undefined && agent.topP !== null) requestBody.top_p = agent.topP;
+    if (agent.topK !== undefined && agent.topK !== null) requestBody.top_k = agent.topK;
+    if (agent.presencePenalty !== undefined && agent.presencePenalty !== null) requestBody.presence_penalty = agent.presencePenalty;
+    if (agent.frequencyPenalty !== undefined && agent.frequencyPenalty !== null) requestBody.frequency_penalty = agent.frequencyPenalty;
+    if (agent.repetitionPenalty !== undefined && agent.repetitionPenalty !== null) requestBody.repetition_penalty = agent.repetitionPenalty;
+    if (agent.minP !== undefined && agent.minP !== null) requestBody.min_p = agent.minP;
     
     console.log('Sending chat API request to endpoint:', this.apiEndpoint, 'for', agent.name);
     
-    // Make the API request
+    // Make the API request with our fetch method
     const endpoint = '/v1/chat/completions';
-    const response = await this.fetch(endpoint, {
-      method: 'POST',
-      body: JSON.stringify(requestBody)
-    });
+    let response;
     
-    console.log('Received API response:', response.status);
+    try {
+      response = await this.fetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+      });
+      
+      console.log('Received API response:', response.status);
+    } catch (error) {
+      console.error('Error fetching from API:', error);
+      
+      // Notify the tab about the error 
+      try {
+        await chrome.tabs.sendMessage(tabId, {
+          action: 'SHOW_ERROR',
+          error: error.message,
+          agentId
+        }).catch(() => console.warn('Could not show error in tab'));
+      } catch (e) {
+        console.warn('Error sending error message to tab:', e);
+      }
+      
+      // Hide loading indicator
+      try {
+        await chrome.tabs.sendMessage(tabId, { 
+          action: 'HIDE_LOADING',
+          agentId
+        }).catch(() => console.warn('Could not hide loading in tab'));
+      } catch (e) {
+        console.warn('Error hiding loading indicator:', e);
+      }
+      
+      return { success: false, error: error.message };
+    }
     
     // Handle streaming or non-streaming response
     let fullResponse = '';
     
-    if (agent.stream) {
+    if (agent.stream && streamHandler) {
       // Process streaming response
       const streamReader = response.body.getReader();
       streamHandler.registerStream(agentId, streamReader, tabId);
@@ -289,13 +437,36 @@ async sendChatMessage(
       try {
         fullResponse = await streamHandler.processStream(agentId);
       } catch (error) {
-        console.error('Error processing stream:', error);
-        throw error;
+        // If there was a network error during streaming, we've already handled it
+        // in the stream handler, so just log it here and continue
+        console.error('Error during stream processing:', error);
+        
+        // Create an error message if we don't have any content yet
+        if (!fullResponse) {
+          fullResponse = `Error processing response: ${error.message}\n\nPlease try again.`;
+          
+          // Try to send the error to the tab
+          try {
+            await chrome.tabs.sendMessage(tabId, {
+              action: 'STREAM_CONTENT',
+              content: fullResponse,
+              isFirst: true,
+              agentId
+            }).catch(() => console.warn('Could not send error content to tab'));
+          } catch (e) {
+            console.warn('Error sending error message to tab:', e);
+          }
+        }
       }
     } else {
       // Process regular response
-      const data = await response.json();
-      fullResponse = data.choices[0].message.content;
+      try {
+        const data = await response.json();
+        fullResponse = data.choices[0].message.content;
+      } catch (error) {
+        console.error('Error parsing API response:', error);
+        fullResponse = `Error parsing API response: ${error.message}\n\nPlease try again later.`;
+      }
       
       // Send with error handling
       try {
@@ -320,35 +491,48 @@ async sendChatMessage(
       }
     }
     
-    // Store the message and response
-    await conversationManager.storeMessage(
-      message, 
-      fullResponse, 
-      url, 
-      title, 
-      conversationId, 
-      agentId,
-      agent.model // Add model parameter
-    );
+    // Store the message and response if we have a conversation manager
+    if (conversationManager && fullResponse) {
+      try {
+        await conversationManager.storeMessage(
+          userMessage, 
+          fullResponse, 
+          url, 
+          title, 
+          conversationId, 
+          agentId,
+          agent.model
+        );
+      } catch (error) {
+        console.error('Error storing message:', error);
+        // Don't throw - this is not critical to the user experience
+      }
+    }
     
     return { success: true };
   } catch (error) {
     console.error('Error sending chat message:', error);
     
-    // Notify the tab about the error - with error handling
+    // Format a more user-friendly error message
+    let errorMessage = error.message;
+    if (error.message.includes('Failed to fetch') || 
+        error.message.includes('Network request failed') ||
+        error.message.includes('Unable to reach')) {
+      errorMessage = 'Unable to reach the API server. Please check your connection and API configuration.';
+    }
+    
+    // Notify the tab about the error
     try {
       await chrome.tabs.sendMessage(tabId, {
         action: 'SHOW_ERROR',
-        error: error.message,
+        error: errorMessage,
         agentId
-      }).catch(() => {
-        // Silent catch - we're already in an error state
-      });
+      }).catch(() => console.warn('Could not show error in tab'));
     } catch (e) {
-      // Silent catch - we're already in an error state
+      console.warn('Error sending error message to tab:', e);
     }
     
-    return { success: false, error: error.message };
+    return { success: false, error: errorMessage };
   }
 }
 
@@ -361,6 +545,11 @@ async sendChatMessage(
     try {
       await this.ensureInitialized();
       
+      // Check for recent errors before attempting the save
+      if (this.lastAPIError && Date.now() - this.lastAPIErrorTime < 30000) {
+        throw new Error('Recent API error detected. Please try again later.');
+      }
+      
       const response = await this.fetch('/api/conversation', {
         method: 'POST',
         body: JSON.stringify({
@@ -372,6 +561,14 @@ async sendChatMessage(
       return await response.json();
     } catch (error) {
       console.error('Save conversation error:', error);
+      
+      // Enhance error message for user visibility
+      if (error.message.includes('Failed to fetch') || 
+          error.message.includes('Network request failed') ||
+          error.message.includes('Unable to reach')) {
+        throw new Error('Unable to save conversation. The API server is currently unreachable.');
+      }
+      
       throw error;
     }
   }

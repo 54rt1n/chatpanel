@@ -23,6 +23,24 @@ class MessageRouter {
     
     // Route message to appropriate handler
     switch (request.action) {
+      case 'PING':
+        // Simple ping to check connection
+        sendResponse({ success: true, timestamp: Date.now() });
+        return false;
+        
+      case 'CHECK_STATUS':
+        // Return detailed status of the service worker
+        sendResponse({
+          success: true,
+          status: {
+            isActive: true,
+            activePanels: this.activePanelTabs.size,
+            activeStreams: this.streamHandler.activeStreams.size,
+            timestamp: Date.now()
+          }
+        });
+        return false;
+        
       case 'JOIN_PANEL':
         return this.handleJoinPanel(request, sender, sendResponse);
         
@@ -246,22 +264,34 @@ class MessageRouter {
    * Handle analyze page request
    */
   handleAnalyzePage(request, sender, sendResponse) {
-    console.log('Starting page analysis');
-    // Use the explicitly passed tabId from the popup, or fall back to sender.tab.id
-    const tabId = request.tabId || (sender.tab && sender.tab.id);
+    console.log('Handling page analysis');
+    const tabId = sender.tab?.id;
     if (!tabId) {
       console.error('No tab ID available for analysis');
       sendResponse({ success: false, error: 'No tab ID available' });
       return false;
     }
+
+    // Ensure sending tab is in active panels
+    this.activePanelTabs.add(tabId);
     
     // Create a Promise race between our operation and a timeout
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timed out')), 240000) // 4 minute timeout
+      setTimeout(() => reject(new Error('Operation timed out - the request took too long to complete. Please try again.')), 90000) // 90 second timeout
     );
 
     Promise.race([
-      this.api.analyzeWebpage(request.data, tabId, this.agents.getActiveAgent()),
+      this.api.sendChatMessage(
+        null, // No explicit message for analysis
+        request.data.url,
+        request.data.text,
+        request.data.title,
+        tabId,
+        this.agents.getActiveAgent().id,
+        request.data.conversationId,
+        this.streamHandler,
+        this.conversations
+      ),
       timeoutPromise
     ])
       .then(response => {
@@ -270,7 +300,16 @@ class MessageRouter {
       })
       .catch(error => {
         console.error('Error in message handler:', error);
-        sendResponse({ success: false, error: error.message });
+        // Check if this is a connection error
+        if (error.message.includes('Extension context invalidated') || 
+            error.message.includes('Could not establish connection')) {
+          sendResponse({ 
+            success: false, 
+            error: 'The extension needs to be reloaded. Please refresh the page and try again.'
+          });
+        } else {
+          sendResponse({ success: false, error: error.message });
+        }
       });
     
     return true;
@@ -293,7 +332,7 @@ class MessageRouter {
 
     // Create a Promise race between our operation and a timeout
     const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Operation timed out')), 240000) // 4 minute timeout
+      setTimeout(() => reject(new Error('Operation timed out - the request took too long to complete. Please try again.')), 900000) // 15 minute timeout
     );
 
     Promise.race([
@@ -316,7 +355,16 @@ class MessageRouter {
       })
       .catch(error => {
         console.error('Error in chat handler:', error);
-        sendResponse({ success: false, error: error.message });
+        // Check if this is a connection error
+        if (error.message.includes('Extension context invalidated') || 
+            error.message.includes('Could not establish connection')) {
+          sendResponse({ 
+            success: false, 
+            error: 'The extension needs to be reloaded. Please refresh the page and try again.'
+          });
+        } else {
+          sendResponse({ success: false, error: error.message });
+        }
       });
 
     return true;

@@ -9,7 +9,9 @@ class ConversationManager {
     this.storage = storageManager;
     this.api = apiClient;
     this.initialized = false;
+    this.MAX_CACHE_SIZE = 20; // Maximum number of conversations to cache
     this.conversationCache = new Map();
+    this.cacheOrder = []; // Track LRU cache order
   }
 
   /**
@@ -27,6 +29,8 @@ class ConversationManager {
   async getConversationMessages(conversationId) {
     // Check cache first
     if (this.conversationCache.has(conversationId)) {
+      // Update cache order (move to front of LRU)
+      this.updateCacheOrder(conversationId);
       return this.conversationCache.get(conversationId);
     }
     
@@ -64,11 +68,53 @@ class ConversationManager {
       })
       .sort((a, b) => a.timestamp - b.timestamp);
     
-    // Cache the result
-    this.conversationCache.set(conversationId, messages);
+    // Add to cache and manage cache size
+    this.addToCache(conversationId, messages);
     
     console.log(`Retrieved ${messages.length} messages for conversation ${conversationId}`);
     return messages;
+  }
+
+  /**
+   * Add a conversation to the cache with LRU management
+   * @param {string} conversationId - The conversation ID
+   * @param {Array} messages - The conversation messages
+   */
+  addToCache(conversationId, messages) {
+    // Add to cache
+    this.conversationCache.set(conversationId, messages);
+    
+    // Update LRU order
+    this.updateCacheOrder(conversationId);
+    
+    // Enforce cache size limit
+    this.enforceCacheLimit();
+  }
+
+  /**
+   * Update the cache order for LRU tracking
+   * @param {string} conversationId - The conversation ID to move to most recent
+   */
+  updateCacheOrder(conversationId) {
+    // Remove from current position if exists
+    const currentIndex = this.cacheOrder.indexOf(conversationId);
+    if (currentIndex !== -1) {
+      this.cacheOrder.splice(currentIndex, 1);
+    }
+    
+    // Add to front (most recently used)
+    this.cacheOrder.unshift(conversationId);
+  }
+
+  /**
+   * Enforce the cache size limit by removing least recently used items
+   */
+  enforceCacheLimit() {
+    while (this.cacheOrder.length > this.MAX_CACHE_SIZE) {
+      const oldestId = this.cacheOrder.pop(); // Remove oldest
+      this.conversationCache.delete(oldestId);
+      console.log(`Removed conversation ${oldestId} from cache due to size limit`);
+    }
   }
 
   /**
@@ -234,6 +280,12 @@ class ConversationManager {
       
       // Invalidate cache
       this.conversationCache.delete(conversationId);
+      
+      // Remove from cache order
+      const orderIndex = this.cacheOrder.indexOf(conversationId);
+      if (orderIndex !== -1) {
+        this.cacheOrder.splice(orderIndex, 1);
+      }
       
       console.log(`Cleared history for conversation ${conversationId}`);
       return true;
