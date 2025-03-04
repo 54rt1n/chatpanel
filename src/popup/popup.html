@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Webpage Capture Assistant</title>
+  <style>
+    body {
+      width: 300px;
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      margin: 0;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .title {
+      font-size: 18px;
+      font-weight: bold;
+      margin: 0;
+      color: #333;
+    }
+
+    .description {
+      font-size: 14px;
+      color: #666;
+      margin: 8px 0 0;
+    }
+
+    .agent-selector {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .agent-label {
+      font-size: 14px;
+      font-weight: bold;
+      color: #333;
+    }
+
+    .agent-select {
+      padding: 8px;
+      border-radius: 4px;
+      border: 1px solid #ddd;
+    }
+
+    .buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    button {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+
+    .primary-btn {
+      background-color: #4CAF50;
+      color: white;
+    }
+
+    .primary-btn:hover {
+      background-color: #45a049;
+    }
+
+    .secondary-btn {
+      background-color: #f1f1f1;
+      color: #333;
+    }
+
+    .secondary-btn:hover {
+      background-color: #e6e6e6;
+    }
+
+    .icon {
+      width: 16px;
+      height: 16px;
+    }
+
+    .status {
+      font-size: 14px;
+      padding: 10px;
+      border-radius: 4px;
+      display: none;
+    }
+
+    .success {
+      background-color: #dff0d8;
+      color: #3c763d;
+    }
+
+    .error {
+      background-color: #f2dede;
+      color: #a94442;
+    }
+
+    .loading {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      color: #666;
+    }
+
+    .spinner {
+      width: 16px;
+      height: 16px;
+      border: 2px solid #f3f3f3;
+      border-top: 2px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .footer {
+      margin-top: 16px;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .footer-btn {
+      background: none;
+      border: none;
+      color: #4285f4;
+      cursor: pointer;
+      font-size: 12px;
+      padding: 0;
+    }
+
+    .footer-btn:hover {
+      text-decoration: underline;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div>
+      <h1 class="title">Webpage Capture Assistant</h1>
+      <p class="description">Analyze the current page or chat with your AI agents.</p>
+    </div>
+
+    <div class="agent-selector">
+      <label class="agent-label" for="agent-select">Select Agent:</label>
+      <select id="agent-select" class="agent-select">
+        <!-- Agents will be populated here -->
+      </select>
+    </div>
+
+    <div class="buttons">
+      <button id="analyzeBtn" class="primary-btn">
+        <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+          <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+        </svg>
+        Analyze This Page
+      </button>
+      
+      <button id="chatBtn" class="secondary-btn">
+        <svg class="icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+        </svg>
+        Open Chat Panel
+      </button>
+    </div>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <span>Processing page...</span>
+    </div>
+
+    <div id="status" class="status"></div>
+
+    <div class="footer">
+      <button id="optionsBtn" class="footer-btn">Options</button>
+      <button id="historyBtn" class="footer-btn">View History</button>
+    </div>
+  </div>
+
+  <script src="index.js"></script>
+</body>
+</html>

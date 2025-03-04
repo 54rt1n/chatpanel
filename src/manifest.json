@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Webpage Capture Assistant",
-  "version": "0.1.1",
-  "description": "Captures webpage content and sends it to a chat completions API for analysis",
+  "version": "1.0",
+  "description": "Captures webpage content and sends it to a chat completions API for analysis with multiple agents",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
-    "contextMenus"
+    "contextMenus",
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -17,7 +18,8 @@
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
-    }
+    },
+    "default_popup": "popup.html"
   },
   "background": {
     "service_worker": "background.js",
@@ -26,7 +28,7 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content-script.js"]
+      "js": ["content.js"]
     }
   ],
   "options_page": "options.html",
@@ -35,4 +37,4 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   }
-} 
+}
