@@ -454,10 +454,14 @@ class PanelManager {
   }
   
   /**
-   * Remove panel from page
+   * Remove panel from page and clean up resources
    */
   removePanel() {
     if (this.panel) {
+      // Clean up event listeners to prevent memory leaks
+      this.removeEventListeners();
+      
+      // Remove the panel from DOM
       this.panel.remove();
       this.panel = null;
     } else {
@@ -466,6 +470,59 @@ class PanelManager {
         panel.remove();
       }
     }
+    
+    // Reset state
+    this.activeAgentId = null;
+  }
+  
+  /**
+   * Clean up event listeners to prevent memory leaks
+   */
+  removeEventListeners() {
+    if (!this.panel) return;
+    
+    // Find and remove event listeners from chat input elements
+    const chatInput = this.panel.querySelector('.chat-input');
+    const sendButton = this.panel.querySelector('.chat-send-button');
+    
+    if (chatInput) {
+      // Clone and replace to remove all listeners
+      const newChatInput = chatInput.cloneNode(true);
+      if (chatInput.parentNode) {
+        chatInput.parentNode.replaceChild(newChatInput, chatInput);
+      }
+    }
+    
+    if (sendButton) {
+      // Clone and replace to remove all listeners
+      const newSendButton = sendButton.cloneNode(true);
+      if (sendButton.parentNode) {
+        sendButton.parentNode.replaceChild(newSendButton, sendButton);
+      }
+    }
+    
+    // Get all buttons within the panel with event listeners
+    const buttons = this.panel.querySelectorAll('button');
+    buttons.forEach(button => {
+      // Clone and replace to remove all listeners
+      const newButton = button.cloneNode(true);
+      if (button.parentNode) {
+        button.parentNode.replaceChild(newButton, button);
+      }
+    });
+    
+    // Clean up any agent tabs
+    const agentTabs = this.panel.querySelectorAll('.agent-tab');
+    agentTabs.forEach(tab => {
+      // Clone and replace to remove all listeners
+      const newTab = tab.cloneNode(true);
+      if (tab.parentNode) {
+        tab.parentNode.replaceChild(newTab, tab);
+      }
+    });
+    
+    // Log cleanup
+    console.log('Cleaned up panel event listeners');
   }
   
   /**

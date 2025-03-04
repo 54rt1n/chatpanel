@@ -361,6 +361,24 @@ class StreamHandler {
     this.activeStreams.clear();
     console.log('All streams cancelled');
   }
+  
+  /**
+   * Remove a tab from a specific agent's stream
+   * @param {string} agentId - The agent ID
+   * @param {number} tabId - The tab ID to remove
+   */
+  removeTabFromAgentStream(agentId, tabId) {
+    const tabs = this.activeStreamTabs.get(agentId);
+    if (tabs) {
+      tabs.delete(tabId);
+      console.log(`Removed tab ${tabId} from agent ${agentId} stream`);
+      
+      // If no tabs left for this agent, consider canceling the stream
+      if (tabs.size === 0 && this.activeStreams.has(agentId)) {
+        console.log(`No more tabs for agent ${agentId}, stream might become orphaned`);
+      }
+    }
+  }
 }
 
 export default StreamHandler;

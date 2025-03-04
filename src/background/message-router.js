@@ -5,11 +5,12 @@
  */
 
 class MessageRouter {
-  constructor(agentManager, conversationManager, apiClient, streamHandler) {
+  constructor(agentManager, conversationManager, apiClient, streamHandler, errorLogger) {
     this.agents = agentManager;
     this.conversations = conversationManager;
     this.api = apiClient;
     this.streamHandler = streamHandler;
+    this.errorLogger = errorLogger || console;
     
     // Panel tracking
     this.activePanelTabs = new Set();
@@ -196,84 +197,24 @@ class MessageRouter {
   }
   
   /**
-   * Handle agent switch request
-   */
-  handleSwitchAgent(request, sender, sendResponse) {
-    console.log('Switching to agent:', request.agentId);
-    this.agents.setActiveAgent(request.agentId)
-      .then(agent => {
-        if (!agent) {
-          sendResponse({ success: false, error: 'Agent not found' });
-          return;
-        }
-        
-        // If the sender is a tab, add it to the agent's stream tabs
-        if (sender.tab?.id) {
-          this.streamHandler.addTabToAgentStream(agent.id, sender.tab.id);
-        }
-        
-        sendResponse({ success: true, agent });
-      })
-      .catch(error => {
-        console.error('Error switching agent:', error);
-        sendResponse({ success: false, error: error.message });
-      });
-    return true;
-  }
-  
-  /**
-   * Handle rejoin conversation request
-   */
-  handleRejoinConversation(request, sender, sendResponse) {
-    console.log('Rejoining conversation:', request.conversationId);
-    
-    // Find agent that owns this conversation
-    let targetAgent = null;
-    
-    for (const agent of this.agents.getAllAgents()) {
-      if (agent.currentConversationId === request.conversationId) {
-        targetAgent = agent;
-        break;
-      }
-    }
-    
-    if (!targetAgent) {
-      // If no agent currently owns this conversation, assign it to the active agent
-      targetAgent = this.agents.getActiveAgent();
-      this.agents.updateAgent(targetAgent.id, {
-        currentConversationId: request.conversationId
-      }).catch(error => console.error('Error updating agent conversation:', error));
-    }
-    
-    // Broadcast the conversation ID update to all panels
-    this.streamHandler.broadcastToAllTabs({
-      action: 'UPDATE_CONVERSATION_ID',
-      conversationId: request.conversationId,
-      agentId: targetAgent.id
-    });
-    
-    // Also update active agent
-    this.agents.setActiveAgent(targetAgent.id)
-      .catch(error => console.error('Error setting active agent:', error));
-    
-    sendResponse({ success: true, agentId: targetAgent.id });
-    return true;
-  }
-  
-  /**
    * Handle analyze page request
    */
   handleAnalyzePage(request, sender, sendResponse) {
     console.log('Handling page analysis');
     const tabId = sender.tab?.id;
     if (!tabId) {
-      console.error('No tab ID available for analysis');
-      sendResponse({ success: false, error: 'No tab ID available' });
-      return false;
+      return this.handleError(
+        new Error('No tab ID available for analysis'),
+        sendResponse,
+        'Page Analysis',
+        null
+      );
     }
 
     // Ensure sending tab is in active panels
     this.activePanelTabs.add(tabId);
+    
+    const activeAgent = this.agents.getActiveAgent();
     
     // Create a Promise race between our operation and a timeout
     const timeoutPromise = new Promise((_, reject) => 
@@ -287,7 +228,7 @@ class MessageRouter {
         request.data.text,
         request.data.title,
         tabId,
-        this.agents.getActiveAgent().id,
+        activeAgent.id,
         request.data.conversationId,
         this.streamHandler,
         this.conversations
@@ -299,17 +240,13 @@ class MessageRouter {
         sendResponse(response);
       })
       .catch(error => {
-        console.error('Error in message handler:', error);
-        // Check if this is a connection error
-        if (error.message.includes('Extension context invalidated') || 
-            error.message.includes('Could not establish connection')) {
-          sendResponse({ 
-            success: false, 
-            error: 'The extension needs to be reloaded. Please refresh the page and try again.'
-          });
-        } else {
-          sendResponse({ success: false, error: error.message });
-        }
+        this.handleError(
+          error,
+          sendResponse,
+          'Page Analysis',
+          tabId,
+          activeAgent.id
+        );
       });
     
     return true;
@@ -322,13 +259,18 @@ class MessageRouter {
     console.log('Handling chat message');
     const tabId = sender.tab?.id;
     if (!tabId) {
-      console.error('No tab ID available for chat');
-      sendResponse({ success: false, error: 'No tab ID available' });
-      return false;
+      return this.handleError(
+        new Error('No tab ID available for chat'),
+        sendResponse,
+        'Chat Message',
+        null
+      );
     }
 
     // Ensure sending tab is in active panels
     this.activePanelTabs.add(tabId);
+    
+    const agentId = request.data.agentId;
 
     // Create a Promise race between our operation and a timeout
     const timeoutPromise = new Promise((_, reject) => 
@@ -342,7 +284,7 @@ class MessageRouter {
         request.data.pageContent,
         request.data.title,
         tabId,
-        request.data.agentId,
+        agentId,
         request.data.conversationId,
         this.streamHandler,
         this.conversations
@@ -354,17 +296,13 @@ class MessageRouter {
         sendResponse(response);
       })
       .catch(error => {
-        console.error('Error in chat handler:', error);
-        // Check if this is a connection error
-        if (error.message.includes('Extension context invalidated') || 
-            error.message.includes('Could not establish connection')) {
-          sendResponse({ 
-            success: false, 
-            error: 'The extension needs to be reloaded. Please refresh the page and try again.'
-          });
-        } else {
-          sendResponse({ success: false, error: error.message });
-        }
+        this.handleError(
+          error,
+          sendResponse,
+          'Chat Message Handler',
+          tabId,
+          agentId
+        );
       });
 
     return true;
@@ -648,6 +586,138 @@ class MessageRouter {
       });
     
     return true; // Keep the sendResponse channel open
+  }
+
+  /**
+   * Standardized error handler for message handlers
+   * @param {Error} error - The error that occurred
+   * @param {function} sendResponse - The response callback
+   * @param {string} context - Context for error logging
+   * @param {number} tabId - Optional tab ID for UI notifications
+   * @param {string} agentId - Optional agent ID for targeted notifications
+   */
+  handleError(error, sendResponse, context, tabId = null, agentId = null) {
+    // Log the error
+    console.error(`Error in ${context}:`, error);
+    
+    // Log to error logger if available
+    if (this.errorLogger?.logError) {
+      this.errorLogger.logError(
+        error,
+        context,
+        { 
+          timestamp: Date.now(),
+          tabId,
+          agentId
+        }
+      );
+    }
+    
+    // Format a more user-friendly error message
+    let errorMessage = error.message;
+    
+    // Categorize common errors
+    if (error.message.includes('Failed to fetch') || 
+        error.message.includes('Network request failed') ||
+        error.message.includes('Unable to reach')) {
+      errorMessage = 'Unable to reach the API server. Please check your connection and API configuration.';
+    } else if (error.message.includes('Extension context invalidated') || 
+               error.message.includes('Could not establish connection')) {
+      errorMessage = 'The extension needs to be reloaded. Please refresh the page and try again.';
+    }
+    
+    // Send error to tab if specified
+    if (tabId && agentId) {
+      try {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'SHOW_ERROR',
+          error: errorMessage,
+          agentId
+        }).catch(err => console.warn('Could not show error in tab:', err.message));
+        
+        // Hide loading indicator
+        chrome.tabs.sendMessage(tabId, { 
+          action: 'HIDE_LOADING',
+          agentId
+        }).catch(err => console.warn('Could not hide loading in tab:', err.message));
+      } catch (e) {
+        console.warn('Error sending error notification to tab:', e);
+      }
+    }
+    
+    // Send error response
+    if (sendResponse) {
+      sendResponse({ success: false, error: errorMessage });
+    }
+  }
+
+  /**
+   * Handle agent switch request
+   */
+  handleSwitchAgent(request, sender, sendResponse) {
+    console.log('Switching to agent:', request.agentId);
+    this.agents.setActiveAgent(request.agentId)
+      .then(agent => {
+        if (!agent) {
+          throw new Error('Agent not found');
+        }
+        
+        // If the sender is a tab, add it to the agent's stream tabs
+        if (sender.tab?.id) {
+          this.streamHandler.addTabToAgentStream(agent.id, sender.tab.id);
+        }
+        
+        sendResponse({ success: true, agent });
+      })
+      .catch(error => {
+        this.handleError(
+          error,
+          sendResponse,
+          'Switch Agent',
+          sender.tab?.id,
+          request.agentId
+        );
+      });
+    return true;
+  }
+  
+  /**
+   * Handle rejoin conversation request
+   */
+  handleRejoinConversation(request, sender, sendResponse) {
+    console.log('Rejoining conversation:', request.conversationId);
+    
+    // Find agent that owns this conversation
+    let targetAgent = null;
+    
+    for (const agent of this.agents.getAllAgents()) {
+      if (agent.currentConversationId === request.conversationId) {
+        targetAgent = agent;
+        break;
+      }
+    }
+    
+    if (!targetAgent) {
+      // If no agent currently owns this conversation, assign it to the active agent
+      targetAgent = this.agents.getActiveAgent();
+      this.agents.updateAgent(targetAgent.id, {
+        currentConversationId: request.conversationId
+      }).catch(error => console.error('Error updating agent conversation:', error));
+    }
+    
+    // Broadcast the conversation ID update to all panels
+    this.streamHandler.broadcastToAllTabs({
+      action: 'UPDATE_CONVERSATION_ID',
+      conversationId: request.conversationId,
+      agentId: targetAgent.id
+    });
+    
+    // Also update active agent
+    this.agents.setActiveAgent(targetAgent.id)
+      .catch(error => console.error('Error setting active agent:', error));
+    
+    sendResponse({ success: true, agentId: targetAgent.id });
+    return true;
   }
 }
 

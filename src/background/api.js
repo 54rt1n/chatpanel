@@ -146,9 +146,9 @@ class ApiClient {
         
         // Only retry server errors and only when not streaming
         if (response.status >= 500 && retryCount < this.maxRetries) {
-          console.log(`Server error (${response.status}), retrying...`);
-          // Simple linear backoff
-          const delay = 1000 * (retryCount + 1);
+          console.log(`Server error (${response.status}), retrying with exponential backoff...`);
+          // Calculate delay with exponential backoff (1s, 2s, 4s, 8s, etc.)
+          const delay = Math.min(30000, 1000 * Math.pow(2, retryCount));
           await new Promise(resolve => setTimeout(resolve, delay));
           return this.fetch(path, options, retryCount + 1);
         }
@@ -172,10 +172,13 @@ class ApiClient {
       const isStreaming = options.body && options.body.includes('"stream":true');
       
       if (isNetworkError && !isStreaming && retryCount < this.maxRetries) {
-        console.log(`Network error: ${error.message}, retrying (${retryCount + 1}/${this.maxRetries})...`);
+        console.log(`Network error: ${error.message}, retrying with exponential backoff (${retryCount + 1}/${this.maxRetries})...`);
         
-        // Simple linear backoff
-        const delay = 1000 * (retryCount + 1);
+        // Calculate delay with exponential backoff (1s, 2s, 4s, 8s, etc.) plus jitter
+        const baseDelay = Math.min(30000, 1000 * Math.pow(2, retryCount));
+        const jitter = Math.random() * 1000; // Add up to 1s of jitter to prevent thundering herd
+        const delay = baseDelay + jitter;
+        
         await new Promise(resolve => setTimeout(resolve, delay));
         
         return this.fetch(path, options, retryCount + 1);
