@@ -200,6 +200,40 @@ class ApiClient {
   }
   
   /**
+   * Get LLM completion (simplified, stateless method)
+   * Used by InteractionHandler for MCP agents
+   */
+  async getLlmCompletion(requestBody) {
+    await this.ensureInitialized();
+    
+    console.log('Getting LLM completion:', {
+      model: requestBody.model,
+      messageCount: requestBody.messages?.length,
+      hasTools: !!requestBody.tools && requestBody.tools.length > 0,
+      stream: requestBody.stream
+    });
+    
+    try {
+      const response = await this.fetch('/v1/chat/completions', {
+        method: 'POST',
+        body: JSON.stringify(requestBody)
+      });
+      
+      // For streaming responses, return the response object for stream processing
+      if (requestBody.stream) {
+        return response;
+      }
+      
+      // For non-streaming responses, parse and return the JSON
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error('Error getting LLM completion:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Analyze a webpage with the active agent
    */
   async analyzeWebpage(pageData, tabId, agent) {

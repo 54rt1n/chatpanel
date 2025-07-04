@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const analyzeBtn = document.getElementById('analyzeBtn');
   const chatBtn = document.getElementById('chatBtn');
   const optionsBtn = document.getElementById('optionsBtn');
+  const mcpTestBtn = document.getElementById('mcpTestBtn');
   const historyBtn = document.getElementById('historyBtn');
   const agentSelect = document.getElementById('agent-select');
   const loadingEl = document.getElementById('loading');
@@ -81,6 +82,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   analyzeBtn.addEventListener('click', () => analyzeCurrentPage());
   chatBtn.addEventListener('click', () => openChatPanel());
   optionsBtn.addEventListener('click', () => chrome.runtime.openOptionsPage());
+  mcpTestBtn.addEventListener('click', () => chrome.tabs.create({ url: 'mcp_status.html' }));
   historyBtn.addEventListener('click', () => chrome.tabs.create({ url: 'history.html' }));
 
   // Agent selector change handler

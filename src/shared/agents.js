@@ -53,6 +53,8 @@ class AgentManager {
       repetitionPenalty: null,
       minP: null,
       stream: true,
+      backendType: 'standard', // 'standard' or 'mcp'
+      mcpServerUrl: null, // URL for MCP SSE endpoint (only used when backendType is 'mcp')
       createdAt: Math.floor(Date.now() / 1000),
       updatedAt: Math.floor(Date.now() / 1000)
     };

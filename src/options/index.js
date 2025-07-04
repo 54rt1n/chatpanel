@@ -9,6 +9,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Connection settings
   const apiEndpointInput = document.getElementById('apiEndpoint');
   const apiKeyInput = document.getElementById('apiKey');
+  const mcpServerUrlInput = document.getElementById('mcpServerUrl');
   
   // User settings
   const userIdInput = document.getElementById('userId');
@@ -66,12 +67,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const settings = await chrome.storage.local.get([
         'apiEndpoint', 
         'apiKey', 
-        'userId'
+        'userId',
+        'mcpServerUrl'
       ]);
       
       if (settings.apiEndpoint) apiEndpointInput.value = settings.apiEndpoint;
       if (settings.apiKey) apiKeyInput.value = settings.apiKey;
       if (settings.userId) userIdInput.value = settings.userId || 'default_user';
+      if (settings.mcpServerUrl) mcpServerUrlInput.value = settings.mcpServerUrl;
       
       // Get agents
       const response = await chrome.runtime.sendMessage({ action: 'GET_AGENTS' });
@@ -87,7 +90,8 @@ document.addEventListener('DOMContentLoaded', async () => {
           model: 'gpt-3.5-turbo',
           systemMessage: 'You are a helpful assistant that analyzes webpage content.',
           temperature: 0.7,
-          stream: true
+          stream: true,
+          backendType: 'standard'
         };
         renderAgentsList([defaultAgent]);
       }
@@ -122,6 +126,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set agent name
     const nameInput = agentItem.querySelector('.agent-name-input');
     nameInput.value = agent.name || '';
+    
+    // Set backend type
+    const backendTypeSelect = agentItem.querySelector('.agent-backend-type');
+    backendTypeSelect.value = agent.backendType || 'standard';
+    
+    // Remove MCP URL handling since it's now global
+    const mcpUrlSection = agentItem.querySelector('.mcp-url-section');
+    if (mcpUrlSection) {
+      mcpUrlSection.remove();
+    }
     
     // Set model
     const modelInput = agentItem.querySelector('.agent-model');
@@ -163,6 +177,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     streamCheckbox.checked = agent.stream !== undefined ? agent.stream : true;
     
     // Set up event listeners
+    
+    // Backend type change handler
+    backendTypeSelect.addEventListener('change', () => {
+      const isMcp = backendTypeSelect.value === 'mcp';
+      mcpUrlSection.style.display = isMcp ? 'block' : 'none';
+    });
     
     // Toggle advanced settings
     const advancedToggle = agentItem.querySelector('.advanced-toggle');
@@ -230,7 +250,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       model: 'gpt-3.5-turbo',
       systemMessage: 'You are a helpful assistant that analyzes webpage content.',
       temperature: 0.7,
-      stream: true
+      stream: true,
+      backendType: 'standard',
+      mcpServerUrl: null
     };
     
     try {
@@ -273,6 +295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       const apiEndpoint = apiEndpointInput.value.trim();
       const apiKey = apiKeyInput.value.trim();
       const userId = userIdInput.value.trim();
+      const mcpServerUrl = mcpServerUrlInput.value.trim();
       
       if (!apiEndpoint || !isValidUrl(apiEndpoint)) {
         showStatus('Invalid API endpoint URL', true);
@@ -291,12 +314,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         userIdInput.focus();
         return;
       }
+
+      // Validate MCP URL if provided
+      if (mcpServerUrl && !isValidUrl(mcpServerUrl)) {
+        showStatus('Invalid MCP Server URL', true);
+        mcpServerUrlInput.focus();
+        return;
+      }
       
       // Save connection and user settings
       await chrome.storage.local.set({
         apiEndpoint,
         apiKey,
-        userId
+        userId,
+        mcpServerUrl
       });
       
       // Validate and collect agent configurations
@@ -310,7 +341,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const modelInput = item.querySelector('.agent-model');
         const systemMessageInput = item.querySelector('.agent-system-message');
         
-        if (!nameInput.value.trim()) {
+        const agentName = nameInput.value.trim();
+        if (!agentName) {
           showStatus('Agent name cannot be empty', true);
           nameInput.focus();
           return;
@@ -336,18 +368,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         
         for (const validation of numberInputs) {
           if (!validateNumberInput(validation.input, validation.min, validation.max, validation.name)) {
-            showStatus(`Invalid ${validation.name} value for agent "${nameInput.value}"`, true);
+            showStatus(`Invalid ${validation.name} value for agent "${agentName}"`, true);
             validation.input.focus();
             return;
           }
         }
         
+        // Get backend type
+        const backendType = item.querySelector('.agent-backend-type').value;
+        
+        // Validate MCP selection
+        if (backendType === 'mcp' && !mcpServerUrl) {
+          showStatus('MCP Server URL is required when using MCP agents', true);
+          mcpServerUrlInput.focus();
+          return;
+        }
+        
         // Create updated agent config
         const updatedConfig = {
-          name: nameInput.value.trim(),
+          name: agentName,
           model: modelInput.value.trim(),
           systemMessage: systemMessageInput.value.trim(),
-          stream: item.querySelector('.agent-stream').checked
+          stream: item.querySelector('.agent-stream').checked,
+          backendType: backendType,
+          mcpServerUrl: backendType === 'mcp' ? mcpServerUrl : null
         };
         
         // Add optional numeric fields

@@ -5,12 +5,15 @@
  */
 
 class MessageRouter {
-  constructor(agentManager, conversationManager, apiClient, streamHandler, errorLogger) {
+  constructor(agentManager, conversationManager, apiClient, streamHandler, errorLogger, mcpConnectors, InteractionHandler, getOrCreateMCPConnector) {
     this.agents = agentManager;
     this.conversations = conversationManager;
     this.api = apiClient;
     this.streamHandler = streamHandler;
     this.errorLogger = errorLogger || console;
+    this.mcpConnectors = mcpConnectors || new Map();
+    this.InteractionHandler = InteractionHandler;
+    this.getOrCreateMCPConnector = getOrCreateMCPConnector;
     
     // Panel tracking
     this.activePanelTabs = new Set();
@@ -221,8 +224,22 @@ class MessageRouter {
       setTimeout(() => reject(new Error('Operation timed out - the request took too long to complete. Please try again.')), 90000) // 90 second timeout
     );
 
-    Promise.race([
-      this.api.sendChatMessage(
+    let operationPromise;
+
+    // Branch based on agent backend type
+    if (activeAgent.backendType === 'mcp') {
+      console.log(`Using MCP workflow for page analysis with agent ${activeAgent.name}`);
+      const analysisData = {
+        message: null, // No explicit message for analysis
+        url: request.data.url,
+        pageContent: request.data.text,
+        title: request.data.title,
+        conversationId: request.data.conversationId
+      };
+      operationPromise = this.handleMCPChatMessage(analysisData, activeAgent, tabId);
+    } else {
+      console.log(`Using standard workflow for page analysis with agent ${activeAgent.name}`);
+      operationPromise = this.api.sendChatMessage(
         null, // No explicit message for analysis
         request.data.url,
         request.data.text,
@@ -232,9 +249,10 @@ class MessageRouter {
         request.data.conversationId,
         this.streamHandler,
         this.conversations
-      ),
-      timeoutPromise
-    ])
+      );
+    }
+
+    Promise.race([operationPromise, timeoutPromise])
       .then(response => {
         console.log('Analysis complete:', response);
         sendResponse(response);
@@ -271,14 +289,33 @@ class MessageRouter {
     this.activePanelTabs.add(tabId);
     
     const agentId = request.data.agentId;
+    
+    // Get the agent configuration
+    const agent = this.agents.getAgent(agentId);
+    if (!agent) {
+      return this.handleError(
+        new Error('Agent not found'),
+        sendResponse,
+        'Chat Message Handler',
+        tabId,
+        agentId
+      );
+    }
 
     // Create a Promise race between our operation and a timeout
     const timeoutPromise = new Promise((_, reject) => 
       setTimeout(() => reject(new Error('Operation timed out - the request took too long to complete. Please try again.')), 900000) // 15 minute timeout
     );
 
-    Promise.race([
-      this.api.sendChatMessage(
+    let operationPromise;
+
+    // Branch based on agent backend type
+    if (agent.backendType === 'mcp') {
+      console.log(`Using MCP workflow for agent ${agent.name}`);
+      operationPromise = this.handleMCPChatMessage(request.data, agent, tabId);
+    } else {
+      console.log(`Using standard workflow for agent ${agent.name}`);
+      operationPromise = this.api.sendChatMessage(
         request.data.message,
         request.data.url,
         request.data.pageContent,
@@ -288,9 +325,10 @@ class MessageRouter {
         request.data.conversationId,
         this.streamHandler,
         this.conversations
-      ),
-      timeoutPromise
-    ])
+      );
+    }
+
+    Promise.race([operationPromise, timeoutPromise])
       .then(response => {
         console.log('Chat handling complete:', response);
         sendResponse(response);
@@ -306,6 +344,42 @@ class MessageRouter {
       });
 
     return true;
+  }
+  
+  /**
+   * Handle MCP chat message using InteractionHandler
+   */
+  async handleMCPChatMessage(data, agent, tabId) {
+    try {
+      // Validate MCP configuration
+      if (!agent.mcpServerUrl) {
+        throw new Error('MCP server URL not configured for this agent');
+      }
+
+      // Get or create MCP connector
+      const mcpConnector = this.getOrCreateMCPConnector(agent.mcpServerUrl);
+
+      // Create InteractionHandler with all dependencies
+      const interaction = new this.InteractionHandler({
+        agent,
+        initialMessage: data.message,
+        conversationId: data.conversationId,
+        apiClient: this.api,
+        mcpConnector,
+        streamHandler: this.streamHandler,
+        conversationManager: this.conversations,
+        tabId,
+        url: data.url,
+        pageContent: data.pageContent,
+        title: data.title
+      });
+
+      // Run the interaction
+      return await interaction.run();
+    } catch (error) {
+      console.error('Error in MCP chat message handling:', error);
+      throw error;
+    }
   }
   
   /**

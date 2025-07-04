@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MCP Test Page</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 20px;
+      background-color: #f5f5f5;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .section {
+      background: white;
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .full-width {
+      grid-column: span 2;
+    }
+
+    h1 {
+      color: #333;
+      margin-bottom: 30px;
+      text-align: center;
+      grid-column: span 2;
+    }
+
+    h2 {
+      color: #555;
+      margin-top: 0;
+      margin-bottom: 15px;
+      border-bottom: 2px solid #4CAF50;
+      padding-bottom: 10px;
+    }
+
+    .form-group {
+      margin-bottom: 15px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+      color: #666;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      box-sizing: border-box;
+    }
+
+    button {
+      background-color: #4CAF50;
+      color: white;
+      padding: 10px 20px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+      margin-bottom: 10px;
+      transition: background-color 0.3s;
+    }
+
+    button:hover {
+      background-color: #45a049;
+    }
+
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+
+    .status {
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+      font-weight: bold;
+    }
+
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+
+    .status.info {
+      background-color: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+
+    .tools-list {
+      max-height: 400px;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 10px;
+      background-color: #f9f9f9;
+    }
+
+    .tool-item {
+      background: white;
+      border: 1px solid #e0e0e0;
+      border-radius: 4px;
+      padding: 15px;
+      margin-bottom: 10px;
+    }
+
+    .tool-name {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 5px;
+    }
+
+    .tool-description {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .tool-parameters {
+      background: #f5f5f5;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      white-space: pre-wrap;
+    }
+
+    .chat-container {
+      display: flex;
+      flex-direction: column;
+      height: 500px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+      background-color: #f9f9f9;
+      margin-bottom: 10px;
+    }
+
+    .chat-message {
+      margin-bottom: 15px;
+      padding: 10px;
+      border-radius: 4px;
+    }
+
+    .chat-message.user {
+      background-color: #e3f2fd;
+      border-left: 4px solid #2196f3;
+    }
+
+    .chat-message.assistant {
+      background-color: #f1f8e9;
+      border-left: 4px solid #4caf50;
+    }
+
+    .chat-message.error {
+      background-color: #ffebee;
+      border-left: 4px solid #f44336;
+    }
+
+    .chat-input {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      resize: vertical;
+      min-height: 80px;
+      font-family: inherit;
+      box-sizing: border-box;
+    }
+
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+
+    .connection-status {
+      padding: 8px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: bold;
+      display: inline-block;
+      margin-left: 10px;
+    }
+
+    .connection-status.connected {
+      background-color: #d4edda;
+      color: #155724;
+    }
+
+    .connection-status.disconnected {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+
+    .connection-status.connecting {
+      background-color: #fff3cd;
+      color: #856404;
+    }
+
+    .agents-list {
+      margin-bottom: 15px;
+    }
+
+    .agent-item {
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      cursor: pointer;
+      transition: background-color 0.3s;
+    }
+
+    .agent-item:hover {
+      background-color: #f0f0f0;
+    }
+
+    .agent-item.active {
+      background-color: #e8f5e8;
+      border-color: #4CAF50;
+    }
+
+    .agent-name {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .agent-type {
+      font-size: 12px;
+      color: #666;
+      margin-left: 10px;
+    }
+
+    .agent-url {
+      font-size: 11px;
+      color: #999;
+      font-family: monospace;
+    }
+
+    @media (max-width: 768px) {
+      .container {
+        grid-template-columns: 1fr;
+      }
+      
+      .full-width {
+        grid-column: span 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MCP Test Interface</h1>
+    
+    <!-- MCP Configuration Section -->
+    <div class="section">
+      <h2>MCP Configuration</h2>
+      <div class="form-group">
+        <label for="mcpUrl">MCP Server URL: <small>(from global settings)</small></label>
+        <input type="text" id="mcpUrl" placeholder="Using global MCP server URL from settings">
+      </div>
+      <button id="connectBtn">Connect to MCP Server</button>
+      <button id="disconnectBtn" disabled>Disconnect</button>
+      <span id="connectionStatus" class="connection-status disconnected">Disconnected</span>
+      <div id="connectionMessage" class="status" style="display: none;"></div>
+    </div>
+
+    <!-- Agent Selection Section -->
+    <div class="section">
+      <h2>Agent Selection</h2>
+      <div id="agentsList" class="agents-list">
+        <div class="loading">Loading agents...</div>
+      </div>
+      <button id="refreshAgents">Refresh Agents</button>
+    </div>
+
+    <!-- Available Tools Section -->
+    <div class="section">
+      <h2>Available Tools</h2>
+      <button id="listToolsBtn" disabled>List Available Tools</button>
+      <div id="toolsContainer">
+        <div class="status info">Connect to MCP server to see available tools</div>
+      </div>
+    </div>
+
+    <!-- Chat Interface Section -->
+    <div class="section">
+      <h2>Chat Interface</h2>
+      <div class="chat-container">
+        <div id="chatMessages" class="chat-messages">
+          <div class="status info">Select an MCP agent and connect to start chatting</div>
+        </div>
+        <textarea id="chatInput" class="chat-input" placeholder="Type your message here..." disabled></textarea>
+        <button id="sendChatBtn" disabled>Send Message</button>
+        <button id="clearChatBtn">Clear Chat</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- The script tag below will be injected automatically by HtmlWebpackPlugin -->
+  <!-- <script src="index.js" type="module"></script> -->
+</body>
+</html> 

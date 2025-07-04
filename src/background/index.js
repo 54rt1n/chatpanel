@@ -13,6 +13,8 @@ import MessageRouter from './message-router';
 import StreamHandler from './stream-handler';
 import ApiClient from './api';
 import ErrorLogger from '../shared/error-logger';
+import MCPConnector from './mcp-connector';
+import InteractionHandler from './interaction-handler';
 
 console.log('Background script loaded and running');
 
@@ -27,13 +29,19 @@ class BackgroundApp {
       this.conversations = new ConversationManager(this.storage, this.api); // Pass API client
       this.streamHandler = new StreamHandler(this.agents);
       
+      // Initialize MCP connectors map (keyed by mcpServerUrl)
+      this.mcpConnectors = new Map();
+      
       // Initialize message router
       this.messageRouter = new MessageRouter(
         this.agents,
         this.conversations,
         this.api,
         this.streamHandler,
-        this.errorLogger
+        this.errorLogger,
+        this.mcpConnectors,
+        InteractionHandler,
+        this.getOrCreateMCPConnector.bind(this)
       );
       
       // State tracking
@@ -69,6 +77,9 @@ class BackgroundApp {
       
       // Set up recovery mechanism
       this.setupRecoveryMechanism();
+      
+      // Set up MCP connector cleanup
+      this.setupMCPCleanup();
       
       console.log('Background application initialized successfully');
       this.initializationComplete = true;
@@ -201,6 +212,12 @@ class BackgroundApp {
       });
       
       chrome.contextMenus.create({
+        id: 'mcp_test',
+        title: 'MCP Test Page',
+        contexts: ['action']
+      });
+      
+      chrome.contextMenus.create({
         id: 'refresh_worker',
         title: 'Restart Extension Worker',
         contexts: ['action']
@@ -213,6 +230,8 @@ class BackgroundApp {
         chrome.runtime.openOptionsPage();
       } else if (info.menuItemId === 'history') {
         chrome.tabs.create({ url: 'history.html' });
+      } else if (info.menuItemId === 'mcp_test') {
+        chrome.tabs.create({ url: 'mcp_status.html' });
       } else if (info.menuItemId === 'refresh_worker') {
         // Handle manual restart request
         this.handleManualRestart();
@@ -435,6 +454,73 @@ class BackgroundApp {
         },
         'info'
       );
+    }
+  }
+  
+  /**
+   * Get or create an MCP connector for the given server URL
+   * @param {string} mcpServerUrl - The MCP server URL
+   * @returns {MCPConnector} - The MCP connector instance
+   */
+  getOrCreateMCPConnector(mcpServerUrl) {
+    if (!mcpServerUrl) {
+      throw new Error('MCP server URL is required');
+    }
+    
+    // Check if we already have a connector for this URL
+    if (this.mcpConnectors.has(mcpServerUrl)) {
+      return this.mcpConnectors.get(mcpServerUrl);
+    }
+    
+    // Create new connector
+    console.log(`Creating new MCP connector for: ${mcpServerUrl}`);
+    const connector = new MCPConnector(mcpServerUrl);
+    this.mcpConnectors.set(mcpServerUrl, connector);
+    
+    return connector;
+  }
+  
+  /**
+   * Set up MCP connector cleanup
+   */
+  setupMCPCleanup() {
+    // Clean up MCP connectors periodically
+    chrome.alarms.create('mcpCleanup', { periodInMinutes: 30 });
+    
+    chrome.alarms.onAlarm.addListener(alarm => {
+      if (alarm.name === 'mcpCleanup') {
+        this.cleanupMCPConnectors();
+      }
+    });
+  }
+  
+  /**
+   * Clean up unused MCP connectors
+   */
+  async cleanupMCPConnectors() {
+    try {
+      // Get all current agents
+      const agents = this.agents.getAllAgents();
+      const activeUrls = new Set(
+        agents
+          .filter(agent => agent.backendType === 'mcp' && agent.mcpServerUrl)
+          .map(agent => agent.mcpServerUrl)
+      );
+      
+      // Remove connectors that are no longer used
+      for (const [url, connector] of this.mcpConnectors.entries()) {
+        if (!activeUrls.has(url)) {
+          console.log(`Cleaning up unused MCP connector: ${url}`);
+          try {
+            connector.disconnect();
+          } catch (e) {
+            console.warn(`Error disconnecting MCP connector ${url}:`, e);
+          }
+          this.mcpConnectors.delete(url);
+        }
+      }
+    } catch (error) {
+      console.error('Error during MCP connector cleanup:', error);
     }
   }
 }

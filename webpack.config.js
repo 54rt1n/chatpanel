@@ -14,7 +14,8 @@ module.exports = (env, argv) => {
       content: './src/content/index.js',
       options: './src/options/index.js',
       history: './src/history/index.js',
-      popup: './src/popup/index.js'
+      popup: './src/popup/index.js',
+      mcp_status: './src/mcp/index.js'
     },
     output: {
       path: path.resolve(__dirname, 'dist'),
@@ -78,6 +79,11 @@ module.exports = (env, argv) => {
         template: './src/popup/popup.html',
         filename: 'popup.html',
         chunks: ['popup']
+      }),
+      new HtmlWebpackPlugin({
+        template: './src/mcp/status.html',
+        filename: 'mcp_status.html',
+        chunks: ['mcp_status']
       }),
       isProd && new MiniCssExtractPlugin({
         filename: '[name].css'

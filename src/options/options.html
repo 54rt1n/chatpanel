@@ -42,11 +42,17 @@
 
     input[type="text"],
     input[type="number"],
+    select,
     textarea {
       padding: 8px;
       border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 14px;
+    }
+
+    select {
+      background-color: white;
+      cursor: pointer;
     }
 
     textarea {
@@ -301,6 +307,12 @@
         <input type="text" id="apiKey" placeholder="Enter your API key">
         <small>Your API key will be stored securely in Chrome storage.</small>
       </div>
+
+      <div class="form-group">
+        <label for="mcpServerUrl">MCP Server URL:</label>
+        <input type="text" id="mcpServerUrl" placeholder="Enter MCP server URL (e.g., http://localhost:8000/sse)">
+        <small>The URL of your MCP server for tool-enabled agents.</small>
+      </div>
     </div>
 
     <div class="form-section">
@@ -336,6 +348,14 @@
       </div>
       
       <div class="agent-config">
+        <div class="config-section">
+          <div class="section-title">Backend Type</div>
+          <select class="agent-backend-type">
+            <option value="standard">Standard LLM API</option>
+            <option value="mcp">MCP Agent</option>
+          </select>
+        </div>
+        
         <div class="config-section">
           <div class="section-title">Model</div>
           <input type="text" class="agent-model" placeholder="Model name (e.g., gpt-3.5-turbo)">
